@@ -49,10 +49,10 @@ export class ActivityController {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('userId', 'username email profilePicture')
+        .populate('userId', '_id username email profilePicture')
         .populate({
           path: 'targetId',
-          select: 'title name coverArt username', // Generic fields that might exist
+          select: '_id title name coverArt username', // Generic fields that might exist
         })
         .lean();
 
@@ -121,7 +121,7 @@ export class ActivityController {
         .limit(limit)
         .populate({
           path: 'targetId',
-          select: 'title name coverArt username',
+          select: '_id title name coverArt username',
         })
         .lean();
 
