@@ -106,20 +106,42 @@ export class FollowController {
 
       const skip = (page - 1) * limit;
 
-      // Get followers with user details
+      // Get followers with user details and stats
       const followers = await Follow.find({ followingId: userId })
         .sort({ followedAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('followerId', 'username email profilePicture bio')
+        .populate('followerId', 'username email profilePicture bio createdAt')
         .lean();
 
       const totalFollowers = await Follow.countDocuments({ followingId: userId });
 
+      // Enrich with follower/following counts and song count
+      const enrichedFollowers = await Promise.all(
+        followers.map(async (f: any) => {
+          const user = f.followerId;
+          if (!user) return null;
+
+          const [followerCount, followingCount, songCount] = await Promise.all([
+            Follow.countDocuments({ followingId: user._id }),
+            Follow.countDocuments({ followerId: user._id }),
+            mongoose.connection.collection('songs').countDocuments({ artistId: user._id }),
+          ]);
+
+          return {
+            ...user,
+            followerCount,
+            followingCount,
+            songCount,
+            hasExclusiveContent: songCount > 0,
+          };
+        })
+      );
+
       res.json({
         success: true,
         data: {
-          followers: followers.map((f) => f.followerId),
+          followers: enrichedFollowers.filter((f) => f !== null),
           pagination: {
             currentPage: page,
             totalPages: Math.ceil(totalFollowers / limit),
@@ -149,20 +171,42 @@ export class FollowController {
 
       const skip = (page - 1) * limit;
 
-      // Get following with user details
+      // Get following with user details and stats
       const following = await Follow.find({ followerId: userId })
         .sort({ followedAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('followingId', 'username email profilePicture bio')
+        .populate('followingId', 'username email profilePicture bio createdAt')
         .lean();
 
       const totalFollowing = await Follow.countDocuments({ followerId: userId });
 
+      // Enrich with follower/following counts and song count
+      const enrichedFollowing = await Promise.all(
+        following.map(async (f: any) => {
+          const user = f.followingId;
+          if (!user) return null;
+
+          const [followerCount, followingCount, songCount] = await Promise.all([
+            Follow.countDocuments({ followingId: user._id }),
+            Follow.countDocuments({ followerId: user._id }),
+            mongoose.connection.collection('songs').countDocuments({ artistId: user._id }),
+          ]);
+
+          return {
+            ...user,
+            followerCount,
+            followingCount,
+            songCount,
+            hasExclusiveContent: songCount > 0,
+          };
+        })
+      );
+
       res.json({
         success: true,
         data: {
-          following: following.map((f) => f.followingId),
+          following: enrichedFollowing.filter((f) => f !== null),
           pagination: {
             currentPage: page,
             totalPages: Math.ceil(totalFollowing / limit),
