@@ -1,0 +1,22 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+uploads/*
+!uploads/.gitkeep
+*.log
+.DS_Store
+coverage
+.vscode
+.idea
+
+# Flutter web build artifacts (auto-generated)
+web-build/
+
+# PM2 logs
+logs/
