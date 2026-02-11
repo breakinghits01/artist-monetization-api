@@ -178,7 +178,9 @@ export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<v
  */
 export const createSong = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    // TODO: Use actual userId from req.user when auth is re-enabled
+    // Using valid MongoDB ObjectId format for testing
+    const userId = req.user?.userId || '507f1f77bcf86cd799439011';
     const {
       title,
       duration,
@@ -204,11 +206,12 @@ export const createSong = async (req: AuthRequest, res: Response): Promise<void>
       title,
       duration,
       price: price || 10,
-      coverArt,
+      coverArt: coverArt || 'https://via.placeholder.com/300', // Provide default if null
       audioUrl,
       exclusive: exclusive || false,
       genre,
       description,
+      // Note: status field not in schema, removed
       playCount: 0,
       featured: false,
     });
@@ -219,6 +222,8 @@ export const createSong = async (req: AuthRequest, res: Response): Promise<void>
       data: { song },
     });
   } catch (error: any) {
+    console.error('Create song error:', error); // More detailed logging
+    
     if (error.message.includes('maximum limit')) {
       res.status(400).json({
         success: false,
@@ -231,6 +236,7 @@ export const createSong = async (req: AuthRequest, res: Response): Promise<void>
       success: false,
       message: 'Failed to create song',
       error: error.message,
+      details: error.errors || error, // Add validation details
     });
   }
 };
