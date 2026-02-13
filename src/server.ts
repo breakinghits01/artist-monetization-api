@@ -41,17 +41,28 @@ const PORT = Number(process.env.PORT) || 3000;
 // Connect to MongoDB
 connectDB();
 
-// Security Middleware
-app.use(helmet());
+// Security Middleware - Relaxed CSP for Flutter Web
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://www.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", "https://fonts.gstatic.com", "https://www.gstatic.com", "https://via.placeholder.com", "https://picsum.photos", "https://fastly.picsum.photos"],
+      mediaSrc: ["'self'", "blob:"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'none'"],
+    },
+  },
+}));
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:8080',
-    process.env.WEB_FRONTEND_URL || 'http://localhost:3001',
-    'https://caryl-exertive-treva.ngrok-free.dev', // ngrok permanent URL
-    /\.ngrok-free\.dev$/, // Allow any ngrok domain
-    /\.ngrok\.io$/ // Allow custom ngrok subdomains
-  ],
-  credentials: true
+  origin: true, // Allow all origins for now
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
 }));
 
 // Rate limiting
@@ -105,18 +116,38 @@ app.use(`/api/${API_VERSION}/playlists`, playlistRoutes);
 // app.use(`/api/${API_VERSION}/treasure`, treasureRoutes);
 // app.use(`/api/${API_VERSION}/analytics`, analyticsRoutes);
 
-// Static file serving for uploads (development only)
-if (process.env.NODE_ENV === 'development') {
-  app.use('/uploads', express.static(process.env.UPLOAD_PATH || './uploads'));
-}
-
 // Serve Flutter Web App static files
 const flutterWebPath = path.join(process.cwd(), 'web-build');
-app.use(express.static(flutterWebPath));
+
+// Static file serving for uploads - MUST be before Flutter static files
+const uploadsPath = path.join(__dirname, '../uploads');
+console.log('📁 Serving uploads from:', uploadsPath);
+app.use('/uploads', (_req, res, next) => {
+  // Set CORS headers for audio files
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(uploadsPath, {
+  index: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.mp3') || filePath.endsWith('.m4a') || filePath.endsWith('.wav')) {
+      res.set('Content-Type', 'audio/mpeg');
+    }
+  }
+}));
+
+// Serve Flutter web files for everything else (excluding /uploads and /api)
+app.use((req, res, next) => {
+  // Skip serving Flutter files for uploads and API routes
+  if (req.path.startsWith('/uploads') || req.path.startsWith('/api/')) {
+    return next();
+  }
+  express.static(flutterWebPath)(req, res, next);
+});
 
 // Catch-all route to serve Flutter's index.html for SPA routing
 app.get('*', (req, res, next) => {
-  // Skip API and health routes
+  // Skip API, health, and uploads routes
   if (req.path.startsWith('/api/') || req.path === '/health' || req.path.startsWith('/uploads')) {
     return next();
   }

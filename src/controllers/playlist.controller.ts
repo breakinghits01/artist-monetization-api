@@ -25,12 +25,39 @@ export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise
       Playlist.countDocuments({ userId }),
     ]);
 
+    // Fix songCount for each playlist by checking actual valid songs
+    const playlistsWithValidCounts = await Promise.all(
+      playlists.map(async (playlist: any) => {
+        // Check if songs array has valid references
+        if (playlist.songs && playlist.songs.length > 0) {
+          const validSongsCount = await Song.countDocuments({
+            _id: { $in: playlist.songs },
+          });
+          
+          // Update if count doesn't match
+          if (validSongsCount !== playlist.songCount) {
+            await Playlist.findByIdAndUpdate(playlist._id, {
+              songCount: validSongsCount,
+            });
+            playlist.songCount = validSongsCount;
+          }
+        } else if (playlist.songCount > 0) {
+          // No songs but count > 0, fix it
+          await Playlist.findByIdAndUpdate(playlist._id, {
+            songCount: 0,
+          });
+          playlist.songCount = 0;
+        }
+        return playlist;
+      })
+    );
+
     const totalPages = Math.ceil(total / limitNum);
 
     res.status(200).json({
       success: true,
       data: {
-        playlists,
+        playlists: playlistsWithValidCounts,
         pagination: {
           currentPage: pageNum,
           totalPages,
@@ -57,7 +84,14 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
     const { playlistId } = req.params;
 
     const playlist = await Playlist.findById(playlistId)
-      .populate('songs', 'title artistId duration coverArt audioUrl genre price')
+      .populate({
+        path: 'songs',
+        select: 'title artistId duration coverArt audioUrl genre price',
+        populate: {
+          path: 'artistId',
+          select: 'username email avatarUrl'
+        }
+      })
       .lean();
 
     if (!playlist) {
@@ -68,9 +102,29 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
+    // Filter out null/undefined songs (deleted songs)
+    const validSongs = playlist.songs?.filter((song: any) => song != null) || [];
+    
+    // Update songCount to match actual valid songs
+    const actualCount = validSongs.length;
+    
+    // If songCount doesn't match, update it in the database
+    if (playlist.songCount !== actualCount) {
+      await Playlist.findByIdAndUpdate(playlistId, {
+        songCount: actualCount,
+        songs: validSongs.map((s: any) => s._id),
+      });
+    }
+
     res.status(200).json({
       success: true,
-      data: { playlist },
+      data: { 
+        playlist: {
+          ...playlist,
+          songs: validSongs,
+          songCount: actualCount,
+        }
+      },
     });
   } catch (error: any) {
     res.status(500).json({

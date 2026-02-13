@@ -1,11 +1,26 @@
 const express = require('express');
 const path = require('path');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = 9000;
+const API_PORT = 3000;
 
 // Completely disable all security headers
 app.disable('x-powered-by');
+
+// Proxy API requests to backend
+app.use('/api', createProxyMiddleware({
+  target: `http://localhost:${API_PORT}`,
+  changeOrigin: true,
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[Proxy] ${req.method} /api${req.url} -> http://localhost:${API_PORT}/api${req.url}`);
+  },
+  onError: (err, req, res) => {
+    console.error('[Proxy Error]', err.message);
+    res.status(500).json({ error: 'Proxy error', message: err.message });
+  },
+}));
 
 // Serve static files from Flutter build
 app.use(express.static(path.join(__dirname, '../../dynamic_artist_monetization/build/web'), {

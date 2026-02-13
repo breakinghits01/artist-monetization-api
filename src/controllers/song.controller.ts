@@ -141,6 +141,7 @@ export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<v
 
     const [songs, total] = await Promise.all([
       Song.find({ artistId })
+        .populate('artistId', 'username email avatarUrl')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -149,6 +150,11 @@ export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<v
     ]);
 
     const totalPages = Math.ceil(total / limitNum);
+
+    // Disable caching for artist songs to ensure fresh data after uploads
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
 
     res.status(200).json({
       success: true,
@@ -178,9 +184,30 @@ export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<v
  */
 export const createSong = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // TODO: Use actual userId from req.user when auth is re-enabled
-    // Using valid MongoDB ObjectId format for testing
-    const userId = req.user?.userId || '507f1f77bcf86cd799439011';
+    // Extract userId from JWT token manually since protect middleware is disabled
+    let userId = req.user?.userId;
+    
+    if (!userId && req.headers.authorization?.startsWith('Bearer')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+        userId = decoded.userId;
+        console.log('✅ Extracted userId from token:', userId);
+      } catch (error) {
+        console.error('❌ Failed to decode JWT token:', error);
+      }
+    }
+    
+    // Fallback only if still no userId
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please login.',
+      });
+      return;
+    }
+    
     const {
       title,
       duration,
@@ -291,7 +318,21 @@ export const updateSong = async (req: AuthRequest, res: Response): Promise<void>
  */
 export const deleteSong = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    // Extract userId from JWT token manually since protect middleware is disabled
+    let userId = req.user?.userId;
+    
+    if (!userId && req.headers.authorization?.startsWith('Bearer')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+        userId = decoded.userId;
+        console.log('✅ Extracted userId from token for delete:', userId);
+      } catch (error) {
+        console.error('❌ Failed to decode JWT token:', error);
+      }
+    }
+    
     const { songId } = req.params;
 
     const song = await Song.findOneAndDelete({ _id: songId, artistId: userId });
@@ -372,3 +413,69 @@ export const getGenres = async (_req: AuthRequest, res: Response): Promise<void>
     });
   }
 };
+
+/**
+ * Upload audio file
+ * Returns the file URL to be used when creating a song
+ */
+export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Extract userId from JWT token
+    let userId = req.user?.userId;
+    
+    if (!userId && req.headers.authorization?.startsWith('Bearer')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+        userId = decoded.userId;
+      } catch (error) {
+        console.error('❌ Failed to decode JWT token:', error);
+      }
+    }
+    
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        message: 'No audio file uploaded',
+      });
+      return;
+    }
+
+    // Generate URL for the uploaded file
+    const fileUrl = `/uploads/${req.file.filename}`;
+    
+    console.log('✅ Audio file uploaded:', {
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+      url: fileUrl,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        url: fileUrl,
+        filename: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+      },
+    });
+  } catch (error: any) {
+    console.error('❌ Error uploading audio file:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload audio file',
+      error: error.message,
+    });
+  }
+};
+
