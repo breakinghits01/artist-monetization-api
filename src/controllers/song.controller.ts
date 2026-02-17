@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import Song from '../models/Song.model';
+import PlaySession from '../models/PlaySession.model';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 /**
@@ -362,17 +363,133 @@ export const deleteSong = async (req: AuthRequest, res: Response): Promise<void>
  * Increment play count
  * PUBLIC ENDPOINT
  */
+/**
+ * Start a play session for a song
+ * PROTECTED ENDPOINT
+ */
+export const startPlaySession = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { songId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+      return;
+    }
+
+    // Verify song exists
+    const song = await Song.findById(songId);
+    if (!song) {
+      res.status(404).json({
+        success: false,
+        message: 'Song not found',
+      });
+      return;
+    }
+
+    // Create new play session
+    const session = await PlaySession.create({
+      userId,
+      songId,
+      startedAt: new Date(),
+      progress: 0,
+      completed: false,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        sessionId: session._id,
+        songId: session.songId,
+        startedAt: session.startedAt,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to start play session',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Increment play count (requires valid session at 50%+ progress)
+ * PROTECTED ENDPOINT
+ */
 export const incrementPlayCount = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { songId } = req.params;
+    const userId = req.user?._id;
 
-    const song = await Song.findByIdAndUpdate(
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+      return;
+    }
+
+    // Find the most recent active session for this user and song
+    const recentSession = await PlaySession.findOne({
+      userId,
+      songId,
+      incrementedAt: null, // Not yet incremented
+      startedAt: { $gte: new Date(Date.now() - 3600000) }, // Within last hour
+    })
+      .sort({ startedAt: -1 })
+      .limit(1);
+
+    if (!recentSession) {
+      res.status(400).json({
+        success: false,
+        message: 'No active play session found. Start playing the song first.',
+      });
+      return;
+    }
+
+    // Get song to check duration
+    const song = await Song.findById(songId);
+    if (!song) {
+      res.status(404).json({
+        success: false,
+        message: 'Song not found',
+      });
+      return;
+    }
+
+    // Calculate 50% threshold based on song duration
+    const sessionAge = Date.now() - recentSession.startedAt.getTime();
+    const minimumListenTime = Math.max(
+      (song.duration * 1000 * 0.5), // 50% of song duration
+      5000 // Minimum 5 seconds (spam prevention for very short songs)
+    );
+
+    if (sessionAge < minimumListenTime) {
+      const requiredSeconds = Math.ceil(minimumListenTime / 1000);
+      res.status(400).json({
+        success: false,
+        message: `Must listen to at least 50% of the song (${requiredSeconds}s) before count increments.`,
+      });
+      return;
+    }
+
+    // Mark session as incremented
+    recentSession.incrementedAt = new Date();
+    recentSession.progress = 0.5; // Mark as 50% completion
+    await recentSession.save();
+
+    // Increment the play count
+    const updatedSong = await Song.findByIdAndUpdate(
       songId,
       { $inc: { playCount: 1 } },
       { new: true }
     );
 
-    if (!song) {
+    if (!updatedSong) {
       res.status(404).json({
         success: false,
         message: 'Song not found',
@@ -382,7 +499,10 @@ export const incrementPlayCount = async (req: AuthRequest, res: Response): Promi
 
     res.status(200).json({
       success: true,
-      data: { playCount: song.playCount },
+      data: {
+        playCount: updatedSong.playCount,
+        sessionId: recentSession._id,
+      },
     });
   } catch (error: any) {
     res.status(500).json({

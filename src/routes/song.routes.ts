@@ -10,7 +10,9 @@ router.get('/discover', songController.discoverSongs);
 router.get('/genres', songController.getGenres);
 router.get('/:songId', songController.getSongById);
 router.get('/artist/:artistId', songController.getArtistSongs);
-router.post('/:songId/play', songController.incrementPlayCount);
+// Play count and session management
+router.post('/:songId/session/start', protect, songController.startPlaySession);
+router.post('/:songId/play', protect, songController.incrementPlayCount);
 
 // Protected routes - Temporarily disabled authentication for testing
 router.post('/upload', upload.single('audio'), songController.uploadAudioFile);
