@@ -415,8 +415,8 @@ export const getGenres = async (_req: AuthRequest, res: Response): Promise<void>
 };
 
 /**
- * Upload audio file
- * Returns the file URL to be used when creating a song
+ * Upload audio file + Create song record (Combined endpoint)
+ * Accepts file + metadata in ONE request
  */
 export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -460,15 +460,46 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
       url: fileUrl,
     });
 
-    res.status(200).json({
-      success: true,
-      data: {
-        url: fileUrl,
-        filename: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
-      },
-    });
+    // Extract metadata from request body
+    const { title, genre, price, description, exclusive, duration } = req.body;
+
+    // If metadata is provided, create song record
+    if (title) {
+      console.log('📝 Creating song record with metadata:', { title, genre, price });
+      
+      const song = await Song.create({
+        artistId: userId,
+        title,
+        duration: parseInt(duration) || 240,
+        price: parseInt(price) || 10,
+        coverArt: 'https://via.placeholder.com/300', // Default placeholder
+        audioUrl: fileUrl,
+        exclusive: exclusive === 'true' || exclusive === true,
+        genre: genre || 'Pop',
+        description: description || '',
+        playCount: 0,
+        featured: false,
+      });
+
+      console.log('✅ Song created in database:', song._id);
+
+      res.status(201).json({
+        success: true,
+        message: 'Song uploaded and created successfully',
+        data: { song },
+      });
+    } else {
+      // If no metadata, just return file URL (legacy support)
+      res.status(200).json({
+        success: true,
+        data: {
+          url: fileUrl,
+          filename: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+        },
+      });
+    }
   } catch (error: any) {
     console.error('❌ Error uploading audio file:', error);
     res.status(500).json({

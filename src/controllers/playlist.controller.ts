@@ -86,7 +86,7 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
     const playlist = await Playlist.findById(playlistId)
       .populate({
         path: 'songs',
-        select: 'title artistId duration coverArt audioUrl genre price',
+        select: 'title artistId duration coverArt audioUrl genre price description playCount exclusive featured',
         populate: {
           path: 'artistId',
           select: 'username email avatarUrl'
@@ -105,6 +105,13 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
     // Filter out null/undefined songs (deleted songs)
     const validSongs = playlist.songs?.filter((song: any) => song != null) || [];
     
+    // Map coverArt to albumArt for frontend compatibility
+    const songsWithAlbumArt = validSongs.map((song: any) => ({
+      ...song,
+      albumArt: song.coverArt,
+      tokenReward: 5, // Default token reward
+    }));
+    
     // Update songCount to match actual valid songs
     const actualCount = validSongs.length;
     
@@ -121,7 +128,7 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
       data: { 
         playlist: {
           ...playlist,
-          songs: validSongs,
+          songs: songsWithAlbumArt,
           songCount: actualCount,
         }
       },
