@@ -1,24 +1,6 @@
 module.exports = {
   apps: [
     {
-      name: 'artist-api',
-      script: './dist/server.js',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'development',
-      },
-      env_production: {
-        NODE_ENV: 'production',
-      },
-      error_file: './logs/pm2-error.log',
-      out_file: './logs/pm2-out.log',
-      log_file: './logs/pm2-combined.log',
-      time: true,
-    },
-    {
       name: 'artist-api-dev',
       script: './node_modules/.bin/ts-node',
       args: 'src/server.ts',
@@ -52,7 +34,7 @@ module.exports = {
     {
       name: 'cloudflare-tunnel',
       script: 'cloudflared',
-      args: 'tunnel --url http://localhost:9000',
+      args: 'tunnel --config /Users/DekZ/.cloudflared/config.yml run artist-app',
       instances: 1,
       autorestart: true,
       watch: false,

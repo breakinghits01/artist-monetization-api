@@ -49,14 +49,14 @@ app.use('/api', (req, res, next) => {
 });
 
 // CRITICAL: API proxy
-// When Express matches /api, it strips it from req.url
-// So we need to PREPEND /api back when proxying
+// The API server already has /api prefix, so just proxy as-is
 app.use('/api', createProxyMiddleware({
   target: 'http://localhost:3000',
   changeOrigin: true,
   pathRewrite: (path, req) => {
-    console.log(`[PATH REWRITE] Original: ${path} -> New: /api${path}`);
-    return `/api${path}`;  // ADD /api back
+    const newPath = `/api${path}`;  // Rebuild full path
+    console.log(`[PATH REWRITE] Original: ${path} -> New: ${newPath}`);
+    return newPath;
   },
   logLevel: 'debug',
   onProxyReq: (proxyReq, req, res) => {
