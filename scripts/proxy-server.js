@@ -9,31 +9,17 @@ const webDir = path.join(__dirname, '../web-build');
 // IMPORTANT: Proxies must come BEFORE static file serving!
 // Otherwise express.static will intercept all requests
 
-console.log('Registering /uploads proxy...');
+console.log('Registering /uploads proxy (legacy fallback for old songs)...');
 
-// Debug middleware to see if uploads requests reach Express
-app.use('/uploads', (req, res, next) => {
-  console.log(`!!!!! /UPLOADS REQUEST RECEIVED: ${req.method} ${req.url}`);
-  next();
-});
-
-// Proxy for uploaded audio files - MUST be before static files
-// When Express matches /uploads, it strips it from req.url
-// So we need to PREPEND /uploads back when proxying
+// Proxy for legacy uploaded audio files (for backward compatibility)
+// New uploads go directly to Cloudflare R2
 app.use('/uploads', createProxyMiddleware({
   target: 'http://localhost:3000',
   changeOrigin: true,
   pathRewrite: (path, req) => {
-    console.log(`[UPLOADS PATH REWRITE] Original: ${path} -> New: /uploads${path}`);
-    return `/uploads${path}`;  // ADD /uploads back
+    return `/uploads${path}`;
   },
-  logLevel: 'debug',
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`[UPLOADS PROXY] ${req.method} ${req.originalUrl}`);
-  },
-  onProxyRes: (proxyRes, req, res) => {
-    console.log(`[UPLOADS SUCCESS] Status: ${proxyRes.statusCode}, Content-Type: ${proxyRes.headers['content-type']}`);
-  },
+  logLevel: 'warn', // Reduced logging since this is legacy
   onError: (err, req, res) => {
     console.error(`[UPLOADS ERROR]: ${err.message}`);
     res.status(502).json({ error: 'Upload proxy error', message: err.message });

@@ -119,9 +119,11 @@ app.use(`/api/${API_VERSION}/playlists`, playlistRoutes);
 // Serve Flutter Web App static files
 const flutterWebPath = path.join(process.cwd(), 'web-build');
 
-// Static file serving for uploads - MUST be before Flutter static files
+// NOTE: Audio files are now served from Cloudflare R2
+// No longer serving local uploads directory
+// Old route kept for backward compatibility (legacy songs)
 const uploadsPath = path.join(__dirname, '../uploads');
-console.log('📁 Serving uploads from:', uploadsPath);
+console.log('📁 Legacy uploads fallback from:', uploadsPath);
 app.use('/uploads', (_req, res, next) => {
   // Set CORS headers for audio files
   res.header('Access-Control-Allow-Origin', '*');

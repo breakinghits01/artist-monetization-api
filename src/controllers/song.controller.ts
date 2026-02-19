@@ -2,6 +2,8 @@ import { Response } from 'express';
 import Song from '../models/Song.model';
 import PlaySession from '../models/PlaySession.model';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { uploadAudioToR2 } from '../middleware/upload.middleware';
+import { deleteFromR2, extractFileNameFromR2Url } from '../config/r2';
 
 /**
  * Get all songs with pagination, filtering, and search
@@ -336,7 +338,7 @@ export const deleteSong = async (req: AuthRequest, res: Response): Promise<void>
     
     const { songId } = req.params;
 
-    const song = await Song.findOneAndDelete({ _id: songId, artistId: userId });
+    const song = await Song.findOne({ _id: songId, artistId: userId });
 
     if (!song) {
       res.status(404).json({
@@ -345,6 +347,23 @@ export const deleteSong = async (req: AuthRequest, res: Response): Promise<void>
       });
       return;
     }
+
+    // Delete audio file from R2 (if it's an R2 URL)
+    if (song.audioUrl.includes('.r2.dev') || song.audioUrl.includes('.r2.cloudflarestorage.com')) {
+      try {
+        const fileName = extractFileNameFromR2Url(song.audioUrl);
+        if (fileName) {
+          await deleteFromR2(fileName);
+          console.log(`✅ Deleted audio from R2: ${fileName}`);
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to delete from R2 (non-critical):', error);
+        // Continue with database deletion even if R2 delete fails
+      }
+    }
+
+    // Delete from database
+    await Song.findByIdAndDelete(songId);
 
     res.status(200).json({
       success: true,
@@ -570,11 +589,12 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    // Generate URL for the uploaded file
-    const fileUrl = `/uploads/${req.file.filename}`;
+    // Upload to Cloudflare R2
+    console.log('📤 Uploading to Cloudflare R2...');
+    const fileUrl = await uploadAudioToR2(req.file);
     
-    console.log('✅ Audio file uploaded:', {
-      filename: req.file.filename,
+    console.log('✅ Audio file uploaded to R2:', {
+      filename: req.file.originalname,
       size: req.file.size,
       mimetype: req.file.mimetype,
       url: fileUrl,
