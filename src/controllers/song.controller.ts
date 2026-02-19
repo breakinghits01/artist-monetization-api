@@ -231,12 +231,15 @@ export const createSong = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
+    // Default placeholder - SVG data URI (works offline, no CORS issues)
+    const defaultCoverArt = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzIxMjEyMSIvPjxwYXRoIGQ9Ik0xNTAgMTAwYzI3LjYgMCA1MCAyMi40IDUwIDUwcy0yMi40IDUwLTUwIDUwLTUwLTIyLjQtNTAtNTAgMjIuNC01MCA1MC01MHptMCA4MGMxNi41NyAwIDMwLTEzLjQzIDMwLTMwcy0xMy40My0zMC0zMC0zMC0zMCAxMy40My0zMCAzMCAxMy40MyAzMCAzMCAzMHoiIGZpbGw9IiM1NTUiLz48cGF0aCBkPSJNMTUwIDIyMGMtMjcuNiAwLTUwLTIyLjQtNTAtNTBzMjIuNC01MCA1MC01MCA1MCAyMi40IDUwIDUwLTIyLjQgNTAtNTAgNTB6bTAtODBjLTE2LjU3IDAtMzAgMTMuNDMtMzAgMzBzMTMuNDMgMzAgMzAgMzAgMzAtMTMuNDMgMzAtMzAtMTMuNDMtMzAtMzAtMzB6IiBmaWxsPSIjNTU1Ii8+PC9zdmc+';
+    
     const song = await Song.create({
       artistId: userId,
       title,
       duration,
       price: price || 10,
-      coverArt: coverArt || 'https://via.placeholder.com/300', // Provide default if null
+      coverArt: coverArt || defaultCoverArt,
       audioUrl,
       exclusive: exclusive || false,
       genre,
@@ -607,12 +610,15 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
     if (title) {
       console.log('📝 Creating song record with metadata:', { title, genre, price });
       
+      // Default placeholder - SVG data URI (works offline, no CORS issues)
+      const defaultCoverArt = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzIxMjEyMSIvPjxwYXRoIGQ9Ik0xNTAgMTAwYzI3LjYgMCA1MCAyMi40IDUwIDUwcy0yMi40IDUwLTUwIDUwLTUwLTIyLjQtNTAtNTAgMjIuNC01MCA1MC01MHptMCA4MGMxNi41NyAwIDMwLTEzLjQzIDMwLTMwcy0xMy40My0zMC0zMC0zMC0zMCAxMy40My0zMCAzMCAxMy40MyAzMCAzMCAzMHoiIGZpbGw9IiM1NTUiLz48cGF0aCBkPSJNMTUwIDIyMGMtMjcuNiAwLTUwLTIyLjQtNTAtNTBzMjIuNC01MCA1MC01MCA1MCAyMi40IDUwIDUwLTIyLjQgNTAtNTAgNTB6bTAtODBjLTE2LjU3IDAtMzAgMTMuNDMtMzAgMzBzMTMuNDMgMzAgMzAgMzAgMzAtMTMuNDMgMzAtMzAtMTMuNDMtMzAtMzAtMzB6IiBmaWxsPSIjNTU1Ii8+PC9zdmc+';
+      
       const song = await Song.create({
         artistId: userId,
         title,
         duration: parseInt(duration) || 240,
         price: parseInt(price) || 10,
-        coverArt: 'https://via.placeholder.com/300', // Default placeholder
+        coverArt: defaultCoverArt,
         audioUrl: fileUrl,
         exclusive: exclusive === 'true' || exclusive === true,
         genre: genre || 'Pop',
