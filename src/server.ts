@@ -7,6 +7,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
+import { createServer } from 'http';
 
 // Load environment variables
 dotenv.config();
@@ -34,6 +35,7 @@ import { notFound } from './middleware/notFound';
 // Import config
 import { connectDB } from './config/database';
 import logger from './config/logger';
+import { initializeWebSocket } from './services/socket.service';
 
 const app: Application = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -160,19 +162,29 @@ app.get('*', (req, res, next) => {
 app.use(notFound);
 app.use(errorHandler);
 
+// Create HTTP server (required for Socket.IO)
+const httpServer = createServer(app);
+
+// Initialize WebSocket
+const io = initializeWebSocket(httpServer);
+
+// Make io available globally for other modules
+(global as any).io = io;
+
 // Start server - listen on all interfaces (0.0.0.0) to accept connections from mobile devices
-const server = app.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
   logger.info(`📡 API available at http://localhost:${PORT}/api/${API_VERSION}`);
   logger.info(`📱 Mobile access at http://192.168.100.32:${PORT}/api/${API_VERSION}`);
   logger.info(`🏥 Health check at http://localhost:${PORT}/health`);
+  logger.info(`🌐 WebSocket server running on port ${PORT}`);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err: Error) => {
   logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
   logger.error(err.name, err.message);
-  server.close(() => {
+  httpServer.close(() => {
     process.exit(1);
   });
 });
@@ -180,7 +192,7 @@ process.on('unhandledRejection', (err: Error) => {
 // Handle SIGTERM
 process.on('SIGTERM', () => {
   logger.info('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  server.close(() => {
+  httpServer.close(() => {
     logger.info('💥 Process terminated!');
   });
 });
