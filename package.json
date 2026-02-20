@@ -23,7 +23,8 @@
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "jest --coverage",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "migrate:audio-fields": "ts-node src/scripts/migrate-song-audio-fields.ts"
   },
   "keywords": [
     "music",
