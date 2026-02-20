@@ -12,6 +12,23 @@ export interface ISong extends Document {
   description?: string;
   playCount: number;
   featured: boolean;
+  
+  // Audio format metadata (for conversion & downloads)
+  audioFormat?: string; // 'mp3' - streaming format
+  audioBitrate?: number; // Bitrate in kbps (e.g., 320)
+  audioFileSize?: number; // File size in bytes
+  
+  originalAudioUrl?: string; // Original upload URL (WAV/FLAC/etc)
+  originalFormat?: string; // Original format (e.g., 'wav', 'flac', 'm4a')
+  originalBitrate?: number; // Original bitrate if applicable
+  originalFileSize?: number; // Original file size in bytes
+  
+  // Download settings
+  downloadEnabled?: boolean; // Allow downloads (default: true)
+  downloadCount?: number; // Total download count
+  downloadFormats?: string[]; // Available formats ['mp3', 'wav']
+  premiumDownloadOnly?: boolean; // Require premium for downloads
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -66,6 +83,53 @@ const SongSchema = new Schema<ISong>(
       min: 0,
     },
     featured: {
+      type: Boolean,
+      default: false,
+    },
+    
+    // Audio format metadata (for conversion & downloads)
+    audioFormat: {
+      type: String,
+      default: 'mp3',
+    },
+    audioBitrate: {
+      type: Number,
+      default: 320, // 320kbps
+    },
+    audioFileSize: {
+      type: Number,
+      min: 0,
+    },
+    
+    originalAudioUrl: {
+      type: String,
+    },
+    originalFormat: {
+      type: String,
+    },
+    originalBitrate: {
+      type: Number,
+    },
+    originalFileSize: {
+      type: Number,
+      min: 0,
+    },
+    
+    // Download settings
+    downloadEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    downloadCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    downloadFormats: {
+      type: [String],
+      default: ['mp3'],
+    },
+    premiumDownloadOnly: {
       type: Boolean,
       default: false,
     },
