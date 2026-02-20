@@ -1,6 +1,17 @@
 import multer from 'multer';
-import path from 'path';
-import { uploadToR2 } from '../config/r2';
+
+/**
+ * Audio Upload Middleware
+ * Configures Multer for audio file uploads with validation
+ * 
+ * Supported Formats:
+ * - MP3 (audio/mpeg, audio/mp3)
+ * - WAV (audio/wav, audio/x-wav)
+ * - FLAC (audio/flac)
+ * - OGG (audio/ogg)
+ * - M4A (audio/m4a, audio/x-m4a, audio/mp4)
+ * - AAC (audio/aac)
+ */
 
 // Configure storage - use memory storage for R2 uploads
 const storage = multer.memoryStorage();
@@ -11,15 +22,24 @@ const fileFilter = (_req: any, file: any, cb: any) => {
     'audio/mpeg',
     'audio/mp3',
     'audio/wav',
+    'audio/x-wav',
     'audio/ogg',
     'audio/m4a',
     'audio/x-m4a',
+    'audio/mp4', // M4A can be audio/mp4
+    'audio/flac',
+    'audio/aac',
   ];
 
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only audio files are allowed.'), false);
+    cb(
+      new Error(
+        'Invalid file type. Only audio files are allowed (MP3, WAV, FLAC, OGG, M4A, AAC).'
+      ),
+      false
+    );
   }
 };
 
@@ -33,24 +53,15 @@ export const upload = multer({
 });
 
 /**
- * Upload file buffer to R2 and return public URL
- * @param file - Multer file object (with buffer)
- * @returns Public URL of uploaded file
+ * Supported audio formats for upload
  */
-export async function uploadAudioToR2(file: Express.Multer.File): Promise<string> {
-  try {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    const nameWithoutExt = path.basename(file.originalname, ext);
-    const fileName = `audio/${nameWithoutExt}-${uniqueSuffix}${ext}`;
+export const SUPPORTED_AUDIO_FORMATS = [
+  'mp3',
+  'wav',
+  'flac',
+  'ogg',
+  'm4a',
+  'aac',
+] as const;
 
-    // Upload to R2
-    const publicUrl = await uploadToR2(file.buffer, fileName, file.mimetype);
-    
-    return publicUrl;
-  } catch (error: any) {
-    console.error('❌ Failed to upload audio to R2:', error);
-    throw new Error(`Upload failed: ${error.message}`);
-  }
-}
+export type SupportedAudioFormat = typeof SUPPORTED_AUDIO_FORMATS[number];

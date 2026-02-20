@@ -2,8 +2,11 @@ import { Response } from 'express';
 import Song from '../models/Song.model';
 import PlaySession from '../models/PlaySession.model';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { uploadAudioToR2 } from '../middleware/upload.middleware';
+import { LegacyUploadService } from '../services/legacy-upload.service';
+import { R2StorageManager } from '../services/r2-storage-manager.service';
+import { AudioConverterService } from '../services/audio-converter.service';
 import { deleteFromR2, extractFileNameFromR2Url } from '../config/r2';
+import * as path from 'path';
 
 /**
  * Get all songs with pagination, filtering, and search
@@ -592,9 +595,125 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    // Upload to Cloudflare R2
-    console.log('📤 Uploading to Cloudflare R2...');
-    const fileUrl = await uploadAudioToR2(req.file);
+    // Upload to Cloudflare R2 with automatic conversion
+    console.log('📤 Processing audio upload...');
+    
+    // Feature flag: Enable/disable automatic conversion
+    const ENABLE_AUTO_CONVERSION = process.env.ENABLE_AUTO_CONVERSION !== 'false';
+    
+    let fileUrl: string;
+    let originalUrl: string | undefined;
+    let audioFormat: string | undefined;
+    let audioBitrate: number | undefined;
+    let audioFileSize: number | undefined;
+    let originalFormat: string | undefined;
+    let originalBitrate: number | undefined;
+    let originalFileSize: number | undefined;
+    
+    if (ENABLE_AUTO_CONVERSION) {
+      try {
+        // Extract file format
+        const ext = path.extname(req.file.originalname).slice(1).toLowerCase();
+        originalFormat = ext;
+        originalFileSize = req.file.size;
+        
+        console.log(`🎵 Original file: ${req.file.originalname} (${ext}, ${(req.file.size / 1024 / 1024).toFixed(2)}MB)`);
+        
+        // Check if conversion is needed
+        const needsConversion = ext !== 'mp3';
+        
+        if (needsConversion) {
+          console.log('🔄 Converting to MP3 320kbps...');
+          
+          // Convert to MP3
+          const conversionResult = await AudioConverterService.convertBufferToMp3(
+            req.file.buffer,
+            ext
+          );
+          
+          console.log(`✅ Conversion complete: ${(conversionResult.buffer.byteLength / 1024 / 1024).toFixed(2)}MB MP3`);
+          
+          // Generate temporary song ID (will be replaced with actual ID after song creation)
+          const tempId = R2StorageManager.generateTempSongId();
+          const timestamp = Date.now();
+          
+          // Upload MP3 (streaming version)
+          fileUrl = await R2StorageManager.uploadStreaming(
+            conversionResult.buffer,
+            tempId,
+            timestamp
+          );
+          
+          // Upload original file (for downloads)
+          originalUrl = await R2StorageManager.uploadOriginal(
+            req.file.buffer,
+            tempId,
+            ext,
+            req.file.mimetype,
+            timestamp
+          );
+          
+          // Set audio metadata from conversion
+          audioFormat = 'mp3';
+          audioBitrate = conversionResult.bitrate || 320;
+          audioFileSize = conversionResult.buffer.byteLength;
+          
+          // Get original file metadata
+          try {
+            const originalMetadata = await AudioConverterService.getMetadataFromBuffer(
+              req.file.buffer,
+              ext
+            );
+            originalBitrate = originalMetadata.bitrate;
+          } catch (metaError) {
+            console.warn('⚠️ Could not extract original metadata:', metaError);
+          }
+          
+          console.log('✅ Upload complete:');
+          console.log(`   Streaming (MP3): ${fileUrl}`);
+          console.log(`   Original (${ext.toUpperCase()}): ${originalUrl}`);
+        } else {
+          console.log('✅ Already MP3, uploading directly...');
+          
+          // Generate temporary song ID
+          const tempId = R2StorageManager.generateTempSongId();
+          const timestamp = Date.now();
+          
+          // Upload MP3 (streaming version)
+          fileUrl = await R2StorageManager.uploadStreaming(
+            req.file.buffer,
+            tempId,
+            timestamp
+          );
+          
+          // Get MP3 metadata
+          try {
+            const metadata = await AudioConverterService.getMetadataFromBuffer(
+              req.file.buffer,
+              'mp3'
+            );
+            audioBitrate = metadata.bitrate;
+          } catch (metaError) {
+            console.warn('⚠️ Could not extract MP3 metadata:', metaError);
+          }
+          
+          audioFormat = 'mp3';
+          audioFileSize = req.file.size;
+          
+          console.log(`✅ Upload complete: ${fileUrl}`);
+        }
+      } catch (conversionError: any) {
+        console.error('❌ Conversion/upload failed, falling back to legacy upload:', conversionError);
+        
+        // Fallback to legacy upload if conversion fails
+        fileUrl = await LegacyUploadService.uploadAudioToR2(req.file);
+        console.log('✅ Fallback upload successful:', fileUrl);
+      }
+    } else {
+      // Feature disabled: Use legacy upload
+      console.log('ℹ️ Auto-conversion disabled, using legacy upload');
+      fileUrl = await LegacyUploadService.uploadAudioToR2(req.file);
+    }
     
     console.log('✅ Audio file uploaded to R2:', {
       filename: req.file.originalname,
@@ -625,6 +744,19 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
         description: description || '',
         playCount: 0,
         featured: false,
+        // Audio format metadata
+        audioFormat,
+        audioBitrate,
+        audioFileSize,
+        originalAudioUrl: originalUrl,
+        originalFormat,
+        originalBitrate,
+        originalFileSize,
+        // Download settings
+        downloadEnabled: true,
+        downloadCount: 0,
+        downloadFormats: originalUrl ? ['mp3', originalFormat] : ['mp3'],
+        premiumDownloadOnly: false,
       });
 
       console.log('✅ Song created in database:', song._id);

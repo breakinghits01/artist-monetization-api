@@ -1,4 +1,4 @@
-import * as ffmpeg from 'fluent-ffmpeg';
+import ffmpeg from 'fluent-ffmpeg';
 import * as ffmpegStatic from 'ffmpeg-static';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -59,7 +59,7 @@ export class AudioConverterService {
 
       // Track progress if callback provided
       if (options?.onProgress) {
-        command.on('progress', (progress) => {
+        command.on('progress', (progress: any) => {
           // FFmpeg returns time-based progress, convert to percentage
           const percent = progress.percent || 0;
           options.onProgress!(Math.min(Math.max(percent, 0), 100));
@@ -73,7 +73,7 @@ export class AudioConverterService {
       });
 
       // Handle errors
-      command.on('error', (err) => {
+      command.on('error', (err: any) => {
         console.error(`❌ Conversion error: ${err.message}`);
         reject(new Error(`Audio conversion failed: ${err.message}`));
       });
@@ -87,12 +87,12 @@ export class AudioConverterService {
    * Convert buffer to MP3 and return buffer
    * @param inputBuffer - Input audio buffer
    * @param inputFormat - Input audio format (e.g., 'wav', 'flac')
-   * @returns Promise with output MP3 buffer
+   * @returns Promise with output MP3 buffer and metadata
    */
   static async convertBufferToMp3(
     inputBuffer: Buffer,
     inputFormat: string
-  ): Promise<Buffer> {
+  ): Promise<{ buffer: Buffer; bitrate?: number; duration?: number }> {
     const tempDir = path.join(process.cwd(), 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
@@ -112,11 +112,63 @@ export class AudioConverterService {
       // Read converted file
       const outputBuffer = fs.readFileSync(outputPath);
 
-      return outputBuffer;
+      // Get metadata of converted file
+      let metadata: { bitrate?: number; duration?: number } = {};
+      try {
+        const meta = await this.getMetadata(outputPath);
+        metadata.bitrate = meta.bitrate;
+        metadata.duration = meta.duration;
+      } catch (metaError) {
+        console.warn('⚠️ Could not extract output metadata:', metaError);
+      }
+
+      return {
+        buffer: outputBuffer,
+        ...metadata,
+      };
     } finally {
       // Cleanup temp files
       await this.cleanupFile(inputPath);
       await this.cleanupFile(outputPath);
+    }
+  }
+
+  /**
+   * Get metadata from buffer
+   * @param buffer - Audio buffer
+   * @param format - Audio format (e.g., 'mp3', 'wav')
+   * @returns Promise with audio metadata
+   */
+  static async getMetadataFromBuffer(
+    buffer: Buffer,
+    format: string
+  ): Promise<{
+    duration: number;
+    bitrate: number;
+    format: string;
+    sampleRate: number;
+    channels: number;
+    size: number;
+  }> {
+    const tempDir = path.join(process.cwd(), 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const tempPath = path.join(tempDir, `meta-${timestamp}.${format}`);
+
+    try {
+      // Write buffer to temp file
+      fs.writeFileSync(tempPath, buffer);
+
+      // Get metadata
+      const metadata = await this.getMetadata(tempPath);
+
+      return metadata;
+    } finally {
+      // Cleanup temp file
+      await this.cleanupFile(tempPath);
     }
   }
 
