@@ -1,6 +1,6 @@
 # Audio Conversion Implementation - Progress Report
 
-## ✅ Completed: Phase 1 & Phase 2
+## ✅ Completed: Phase 1, Phase 2 & Phase 3
 
 ### Phase 1: Backend Foundation (COMPLETE)
 **Status**: ✅ All 4 commits completed successfully
@@ -89,6 +89,68 @@
 
 ---
 
+### Phase 3: Download API (COMPLETE)
+**Status**: ✅ All steps completed successfully
+
+#### 3.1 Created Download History Model
+- ✅ Created `src/models/DownloadHistory.model.ts` (59 lines)
+- ✅ Tracks: userId, songId, format, fileSize, downloadedAt, ipAddress, userAgent
+- ✅ Indexed for fast queries (userId + downloadedAt, songId + downloadedAt)
+- ✅ Used for download tracking and rate limiting
+
+#### 3.2 Created Download Service
+- ✅ Created `src/services/download.service.ts` (334 lines)
+- ✅ Methods implemented:
+  - `checkDownloadPermission()` - Verify user can download (artist or purchaser)
+  - `getAvailableFormats()` - List available formats (MP3, original)
+  - `getDownloadUrl()` - Get download URL for specific format
+  - `trackDownload()` - Save download history + increment counter
+  - `checkRateLimit()` - Enforce 10 downloads/hour limit
+  - `getUserDownloadHistory()` - Get user's download history
+  - `getSongDownloadStats()` - Get song statistics (artist only)
+
+#### 3.3 Created Download Controller
+- ✅ Created `src/controllers/download.controller.ts` (172 lines)
+- ✅ Endpoints:
+  - `downloadSong()` - Download song with format selection
+  - `getAvailableFormats()` - Get available formats
+  - `getDownloadHistory()` - Get user's download history
+  - `getSongDownloadStats()` - Get download stats (artist only)
+- ✅ Full authentication and authorization
+- ✅ Rate limiting enforcement
+- ✅ Permission checks before downloads
+
+#### 3.4 Created Download Routes
+- ✅ Created `src/routes/download.routes.ts` (28 lines)
+- ✅ Routes:
+  - `GET /api/v1/download/song/:songId?format=mp3` - Download song
+  - `GET /api/v1/download/song/:songId/formats` - Get available formats
+  - `GET /api/v1/download/history?limit=50` - Download history
+  - `GET /api/v1/download/stats/:songId` - Song stats (artist only)
+- ✅ All routes protected with authentication
+- ✅ Registered in main server
+
+#### 3.5 Permission System
+- ✅ **Artists**: Can download own songs (any format)
+- ✅ **Purchasers**: Can download purchased songs
+- ✅ **Non-purchasers**: Blocked with clear error message
+- ✅ **Download enabled check**: Respects `downloadEnabled` flag on songs
+- ✅ **Premium check**: Supports `premiumDownloadOnly` restriction
+
+#### 3.6 Rate Limiting
+- ✅ 10 downloads per hour per user
+- ✅ Returns clear error with reset time when exceeded
+- ✅ Tracks by userId + downloadedAt
+- ✅ Sliding window (last 60 minutes)
+
+#### 3.7 Download Tracking
+- ✅ Saves full download history (user, song, format, IP, user agent)
+- ✅ Increments `downloadCount` on song
+- ✅ Provides download statistics for artists
+- ✅ Non-blocking (doesn't fail download if tracking fails)
+
+---
+
 ## 📊 Implementation Summary
 
 ### Files Created (7 files)
@@ -138,6 +200,18 @@
   - [ ] Upload OGG file (should convert to MP3)
   - [ ] Upload AAC file (should convert to MP3)
 
+- [ ] **Test Download API**:
+  - [ ] Artist downloads own song (should work)
+  - [ ] User downloads purchased song (should work)
+  - [ ] User downloads non-purchased song (should fail)
+  - [ ] Download MP3 format (should return streaming URL)
+  - [ ] Download original format (WAV/FLAC) (should return original URL)
+  - [ ] Get available formats (should show MP3 + original if available)
+  - [ ] Exceed rate limit (should block after 10 downloads/hour)
+  - [ ] Check download history (should show all downloads)
+  - [ ] Artist views download stats (should show total + breakdown)
+  - [ ] Non-artist views stats (should fail)
+
 - [ ] **Test Conversion Quality**:
   - [ ] Verify MP3 bitrate is 320kbps
   - [ ] Check audio quality (no distortion)
@@ -179,35 +253,29 @@
 
 ---
 
-## 🚀 Next Steps: Phase 3 - Download API
+## 🚀 Next Steps: Phase 4 - Frontend Integration
 
 ### Remaining Tasks
-1. **Create Download Service** (`src/services/download.service.ts`):
-   - Permission checks (artist can download all, users can download purchased)
-   - Format selection (MP3 or original)
-   - Rate limiting (e.g., 10 downloads per hour)
-   - Download tracking (increment `downloadCount`)
+1. **Flutter App - Download UI**:
+   - Add download button to song detail page
+   - Format selection dialog (MP3 vs Original)
+   - Show file size and quality info
+   - Download progress indicator
+   - Save to device storage (mobile)
+   - Open file location (desktop)
 
-2. **Create Download Controller** (`src/controllers/download.controller.ts`):
-   - `GET /api/download/song/:songId?format=mp3` - Download song
-   - `GET /api/download/song/:songId/formats` - Get available formats
-   - Authentication required
-   - Purchase validation for non-artists
+2. **Flutter App - Download Manager**:
+   - Create downloads page showing history
+   - Display download status (pending, downloading, complete, failed)
+   - Pause/resume downloads
+   - Delete downloaded files
+   - Re-download failed downloads
 
-3. **Create Download History Model** (`src/models/DownloadHistory.model.ts`):
-   - Track who downloaded what, when, format
-   - Schema: `{ userId, songId, format, downloadedAt, ipAddress }`
-
-4. **Add Download Routes** (`src/routes/download.routes.ts`):
-   - Register download endpoints
-   - Apply authentication middleware
-   - Apply rate limiting middleware
-
-5. **Testing**:
-   - Test download permissions (artist vs purchaser)
-   - Test format selection (MP3 vs original)
-   - Test rate limiting
-   - Test download tracking
+3. **Flutter App - API Integration**:
+   - Add download service/API client
+   - Handle authentication
+   - Error handling (rate limit, permissions)
+   - Offline mode (play downloaded files)
 
 ---
 
@@ -255,7 +323,7 @@ npm run build  # or: npx tsc --noEmit
 | Phase 6 | 🔜 **PENDING** | Testing & Deployment (QA, production deploy) |
 
 ---
-
+✅ **COMPLETE
 ## 🎯 Key Features Implemented
 
 ### ✅ Automatic Audio Conversion
@@ -269,10 +337,18 @@ npm run build  # or: npx tsc --noEmit
 - Original file: `audio/original/YYYY/MM/song-{id}-{timestamp}.{ext}`
 - Easy to manage, backup, and scale
 
-### ✅ Complete Audio Metadata
+### ✅ Complete Download Metadata
 - Saves format, bitrate, file size for both MP3 and original
 - Enables smart download options (show file sizes, formats)
 - Tracks download count for analytics
+- Full download history with IP and user agent
+
+### ✅ Download API with Permissions
+- Artists can download own songs (any format)
+- Users can download purchased songs
+- Rate limiting: 10 downloads per hour
+- Format selection: MP3 or original (WAV/FLAC/etc)
+- Download tracking and statistics
 
 ### ✅ Backward Compatibility
 - All new fields optional with defaults
@@ -318,7 +394,26 @@ npm run build  # or: npx tsc --noEmit
 ## 📄 Documentation
 
 ### Related Documents
-- [AUDIO_CONVERSION_DOWNLOAD_PLAN.md](./AUDIO_CONVERSION_DOWNLOAD_PLAN.md) - Comprehensive feature plan
+- [AUDIO_CONVERSION_DOWNLOAD_PLAN.md](./AUDIO_CONVERSION_DOWN
+
+- `GET /api/v1/download/song/:songId?format=mp3` - Download song
+  - Authentication: Required (JWT token)
+  - Permission: Artist (own songs) or purchaser
+  - Query params: `format` (mp3, wav, flac, etc.)
+  - Response: Download URL, file size, song metadata
+  - Rate limit: 10 downloads per hour
+
+- `GET /api/v1/download/song/:songId/formats` - Get available formats
+  - Authentication: Required
+  - Response: Array of formats with bitrate, file size, quality label
+
+- `GET /api/v1/down, 2 & 3 Complete ✅  
+**Next**: Phase 4 - Frontend Integration
+  - Response: User's download history with song details
+
+- `GET /api/v1/download/stats/:songId` - Download statistics (artist only)
+  - Authentication: Required (artist only)
+  - Response: Total downloads, format breakdown, recent downloadsLOAD_PLAN.md) - Comprehensive feature plan
 - [AUDIO_CONVERSION_IMPLEMENTATION_STEPS.md](./AUDIO_CONVERSION_IMPLEMENTATION_STEPS.md) - Step-by-step implementation guide
 
 ### API Documentation
