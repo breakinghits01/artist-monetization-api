@@ -25,13 +25,20 @@ export class DownloadService {
         return { allowed: false, reason: 'Song not found' };
       }
 
-      // Check if downloads are enabled for this song
+      // Check if downloads are enabled for this song (default: true)
       if (song.downloadEnabled === false) {
         return { allowed: false, reason: 'Downloads are disabled for this song' };
       }
 
       // Artist can always download their own songs
-      if (song.artistId._id.toString() === userId) {
+      if (song.artistId && song.artistId._id && song.artistId._id.toString() === userId) {
+        console.log('✅ Artist downloading own song');
+        return { allowed: true, song };
+      }
+
+      // For free songs (price = 0), allow anyone to download
+      if (song.price === 0) {
+        console.log('✅ Free song - download allowed');
         return { allowed: true, song };
       }
 
@@ -91,13 +98,15 @@ export class DownloadService {
         quality: string;
       }> = [];
 
-      // MP3 is always available (streaming version)
-      formats.push({
-        format: 'mp3',
-        bitrate: song.audioBitrate || 320,
-        fileSize: song.audioFileSize,
-        quality: 'High Quality (MP3 320kbps)',
-      });
+      // MP3 is available if there's an audioUrl
+      if (song.audioUrl) {
+        formats.push({
+          format: 'mp3',
+          bitrate: song.audioBitrate || 320,
+          fileSize: song.audioFileSize,
+          quality: 'High Quality (MP3 320kbps)',
+        });
+      }
 
       // Add original format if available
       if (song.originalAudioUrl && song.originalFormat) {

@@ -5,6 +5,7 @@ import {
   getAvailableFormats,
   getDownloadHistory,
   getSongDownloadStats,
+  confirmDownload,
 } from '../controllers/download.controller';
 
 const router = express.Router();
@@ -19,6 +20,9 @@ router.get('/song/:songId', protect, downloadSong);
 
 // Get available download formats for a song
 router.get('/song/:songId/formats', protect, getAvailableFormats);
+
+// Confirm download (track after user actually downloads)
+router.post('/song/:songId/confirm', protect, confirmDownload);
 
 // Get user's download history
 router.get('/history', protect, getDownloadHistory);

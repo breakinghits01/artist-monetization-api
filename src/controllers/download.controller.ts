@@ -8,7 +8,7 @@ import { DownloadService } from '../services/download.service';
  */
 export const downloadSong = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?._id?.toString();
     const { songId } = req.params;
     const format = (req.query.format as string) || 'mp3';
 
@@ -54,17 +54,8 @@ export const downloadSong = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    // Track download
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
-    const userAgent = req.headers['user-agent'];
-    await DownloadService.trackDownload(
-      userId,
-      songId,
-      format,
-      downloadData.fileSize || 0,
-      ipAddress,
-      userAgent
-    );
+    // Don't track download here - only track when confirmed via /confirm endpoint
+    // This prevents tracking when users cancel the download
 
     // Return download URL (redirect to file)
     res.status(200).json({
@@ -93,7 +84,7 @@ export const downloadSong = async (req: AuthRequest, res: Response): Promise<voi
  */
 export const getAvailableFormats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?._id?.toString();
     const { songId } = req.params;
 
     if (!userId) {
@@ -137,7 +128,7 @@ export const getAvailableFormats = async (req: AuthRequest, res: Response): Prom
  */
 export const getDownloadHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?._id?.toString();
     const limit = parseInt(req.query.limit as string) || 50;
 
     if (!userId) {
@@ -170,7 +161,7 @@ export const getDownloadHistory = async (req: AuthRequest, res: Response): Promi
  */
 export const getSongDownloadStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?._id?.toString();
     const { songId } = req.params;
 
     if (!userId) {
@@ -202,6 +193,50 @@ export const getSongDownloadStats = async (req: AuthRequest, res: Response): Pro
     res.status(500).json({
       success: false,
       message: 'Failed to get download statistics',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Confirm download (track after user actually downloads)
+ * POST /api/download/song/:songId/confirm
+ */
+export const confirmDownload = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id?.toString();
+    const { songId } = req.params;
+    const { format, fileSize } = req.body;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+      return;
+    }
+
+    // Track download
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
+    const userAgent = req.headers['user-agent'];
+    await DownloadService.trackDownload(
+      userId,
+      songId,
+      format || 'mp3',
+      fileSize || 0,
+      ipAddress,
+      userAgent
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Download confirmed',
+    });
+  } catch (error: any) {
+    console.error('❌ Error confirming download:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to confirm download',
       error: error.message,
     });
   }
