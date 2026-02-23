@@ -32,9 +32,13 @@ export const discoverSongs = async (req: AuthRequest, res: Response): Promise<vo
     // Build query
     const query: any = {};
 
-    // Search by title or description
+    // Search by title or artist username (partial match with regex)
     if (search) {
-      query.$text = { $search: search as string };
+      const searchRegex = new RegExp(search as string, 'i'); // Case-insensitive
+      query.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+      ];
     }
 
     // Filter by genre
