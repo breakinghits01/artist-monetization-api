@@ -133,20 +133,25 @@ export class UserController {
         });
       }
 
-      // Sort stage
+      // Sort stage - Multi-criteria ranking for better results
       let sortStage: any = {};
       switch (sortBy) {
         case 'followerCount':
-          sortStage = { followerCount: -1, username: 1 };
+          // Popular artists: followers → songs → newest
+          sortStage = { followerCount: -1, songCount: -1, createdAt: -1 };
           break;
         case 'songCount':
-          sortStage = { songCount: -1, username: 1 };
+          // Rising artists: content volume → popularity → newest
+          // Prioritizes active content creators over passive accounts
+          sortStage = { songCount: -1, followerCount: -1, createdAt: -1 };
           break;
         case 'latest':
-          sortStage = { createdAt: -1 };
+          // New artists: newest → songs → followers
+          sortStage = { createdAt: -1, songCount: -1, followerCount: -1 };
           break;
         default:
-          sortStage = { followerCount: -1 };
+          // Default: balanced ranking
+          sortStage = { followerCount: -1, songCount: -1 };
       }
       pipeline.push({ $sort: sortStage });
 

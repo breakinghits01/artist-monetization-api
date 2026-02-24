@@ -8,9 +8,20 @@ const unlink = promisify(fs.unlink);
 const exists = promisify(fs.exists);
 
 // Set FFmpeg path to bundled binary
-const ffmpegPath = ffmpegStatic as unknown as string;
-if (ffmpegPath) {
+// Handle both string and object returns from ffmpeg-static
+let ffmpegPath: string | null = null;
+if (typeof ffmpegStatic === 'string') {
+  ffmpegPath = ffmpegStatic;
+} else if (ffmpegStatic && typeof ffmpegStatic === 'object') {
+  // Handle case where ffmpeg-static returns an object
+  ffmpegPath = (ffmpegStatic as any).path || (ffmpegStatic as any).default || null;
+}
+
+if (ffmpegPath && typeof ffmpegPath === 'string') {
   ffmpeg.setFfmpegPath(ffmpegPath);
+  console.log('✅ FFmpeg path configured:', ffmpegPath);
+} else {
+  console.warn('⚠️ FFmpeg path not found, using system FFmpeg');
 }
 
 /**
@@ -186,30 +197,41 @@ export class AudioConverterService {
     size: number;
   }> {
     return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(filePath, (err, metadata) => {
-        if (err) {
-          reject(new Error(`Failed to read metadata: ${err.message}`));
-          return;
-        }
+      try {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+          if (err) {
+            console.error('❌ FFprobe error:', err.message);
+            reject(new Error(`Failed to read metadata: ${err.message}`));
+            return;
+          }
 
-        const audioStream = metadata.streams.find(
-          (stream) => stream.codec_type === 'audio'
-        );
+          if (!metadata || !metadata.streams) {
+            reject(new Error('Invalid metadata structure'));
+            return;
+          }
 
-        if (!audioStream) {
-          reject(new Error('No audio stream found in file'));
-          return;
-        }
+          const audioStream = metadata.streams.find(
+            (stream) => stream.codec_type === 'audio'
+          );
 
-        resolve({
-          duration: Math.floor(metadata.format.duration || 0),
-          bitrate: Math.floor((metadata.format.bit_rate || 0) / 1000),
-          format: metadata.format.format_name || 'unknown',
-          sampleRate: audioStream.sample_rate || 44100,
-          channels: audioStream.channels || 2,
-          size: metadata.format.size || 0,
+          if (!audioStream) {
+            reject(new Error('No audio stream found in file'));
+            return;
+          }
+
+          resolve({
+            duration: Math.floor(metadata.format.duration || 0),
+            bitrate: Math.floor((metadata.format.bit_rate || 0) / 1000),
+            format: metadata.format.format_name || 'unknown',
+            sampleRate: audioStream.sample_rate || 44100,
+            channels: audioStream.channels || 2,
+            size: metadata.format.size || 0,
+          });
         });
-      });
+      } catch (error: any) {
+        console.error('❌ FFprobe initialization error:', error);
+        reject(new Error(`FFmpeg error: ${error.message}`));
+      }
     });
   }
 

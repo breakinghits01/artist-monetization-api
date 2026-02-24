@@ -29,6 +29,16 @@ export interface ISong extends Document {
   downloadFormats?: string[]; // Available formats ['mp3', 'wav']
   premiumDownloadOnly?: boolean; // Require premium for downloads
   
+  // Engagement metrics (cached from relations)
+  likeCount?: number;
+  dislikeCount?: number;
+  commentCount?: number;
+  shareCount?: number;
+  averageRating?: number;
+  ratingCount?: number;
+  engagementScore?: number;
+  engagementUpdatedAt?: Date;
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -133,6 +143,48 @@ const SongSchema = new Schema<ISong>(
       type: Boolean,
       default: false,
     },
+    
+    // Engagement metrics (cached counters for performance)
+    likeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    dislikeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    commentCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    shareCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    ratingCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    engagementScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    engagementUpdatedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -145,6 +197,12 @@ SongSchema.index({ title: 'text', description: 'text' });
 SongSchema.index({ genre: 1 });
 SongSchema.index({ createdAt: -1 });
 SongSchema.index({ playCount: -1 });
+SongSchema.index({ engagementScore: -1, createdAt: -1 }); // For trending/popular sorting
+SongSchema.index({ likeCount: -1 }); // For most liked
+SongSchema.index({ commentCount: -1 }); // For most discussed
+SongSchema.index({ shareCount: -1 }); // For most shared
+SongSchema.index({ averageRating: -1, ratingCount: -1 }); // For top rated (with min rating count)
+SongSchema.index({ artistId: 1, engagementScore: -1 }); // For artist's popular songs
 
 // Validate max songs per artist (10 songs limit)
 SongSchema.pre('save', async function (next) {
