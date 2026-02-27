@@ -4,6 +4,7 @@ import User from '../models/User.model';
 import { Follow } from '../models/Follow';
 import Song from '../models/Song.model';
 import mongoose from 'mongoose';
+import { getTimeWindow, getFormulaWeights, getAvailableTimeWindows, getAvailableFormulas } from '../config/rising-stars.config';
 
 export class UserController {
   // Get user profile
@@ -55,8 +56,12 @@ export class UserController {
       const limit = parseInt(req.query.limit as string) || 20;
       const search = req.query.search as string;
       const genre = req.query.genre as string;
-      const sortBy = (req.query.sortBy as string) || 'followerCount'; // followerCount, songCount, latest
+      const sortBy = (req.query.sortBy as string) || 'followerCount'; // followerCount, songCount, latest, risingScore
       const currentUserId = req.user?._id; // Get current user ID if authenticated
+      
+      // Rising Stars query parameters (optional)
+      const timeWindow = req.query.timeWindow as string; // e.g., '7d', '30d', '90d'
+      const formula = req.query.formula as string; // e.g., 'balanced', 'viral', 'engaged'
 
       const skip = (page - 1) * limit;
 
@@ -149,21 +154,146 @@ export class UserController {
           // New artists: newest → songs → followers
           sortStage = { createdAt: -1, songCount: -1, followerCount: -1 };
           break;
+        case 'risingScore':
+          // Rising Stars: Configurable engagement-based scoring
+          // Uses centralized config for weights and time windows
+          // @see src/config/rising-stars.config.ts
+          
+          // Get configuration values
+          const timeWindowMs = getTimeWindow(timeWindow);
+          const weights = getFormulaWeights(formula);
+          const cutoffDate = new Date(Date.now() - timeWindowMs);
+          
+          // Lookup recent followers (configurable time window)
+          pipeline.push({
+            $lookup: {
+              from: 'follows',
+              let: { artistId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$followingId', '$$artistId'] },
+                        { $gte: ['$createdAt', cutoffDate] }
+                      ]
+                    }
+                  }
+                }
+              ],
+              as: 'recentFollows'
+            }
+          });
+          
+          // Lookup recent likes on artist's songs (configurable time window)
+          pipeline.push({
+            $lookup: {
+              from: 'songlikes',
+              let: { songIds: '$songs._id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $in: ['$songId', '$$songIds'] },
+                        { $eq: ['$likeType', 'like'] },
+                        { $gte: ['$createdAt', cutoffDate] }
+                      ]
+                    }
+                  }
+                }
+              ],
+              as: 'recentLikes'
+            }
+          });
+          
+          // Lookup recent comments on artist's songs (configurable time window)
+          pipeline.push({
+            $lookup: {
+              from: 'comments',
+              let: { songIds: '$songs._id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $in: ['$songId', '$$songIds'] },
+                        { $gte: ['$createdAt', cutoffDate] }
+                      ]
+                    }
+                  }
+                }
+              ],
+              as: 'recentComments'
+            }
+          });
+          
+          // Lookup recent shares on artist's songs (configurable time window)
+          pipeline.push({
+            $lookup: {
+              from: 'songshares',
+              let: { songIds: '$songs._id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $in: ['$songId', '$$songIds'] },
+                        { $gte: ['$createdAt', cutoffDate] }
+                      ]
+                    }
+                  }
+                }
+              ],
+              as: 'recentShares'
+            }
+          });
+          
+          // Calculate Rising Score with configurable weights
+          // Formula uses weights from config for easy tuning
+          pipeline.push({
+            $addFields: {
+              recentFollowerCount: { $size: '$recentFollows' },
+              recentLikesCount: { $size: '$recentLikes' },
+              recentCommentsCount: { $size: '$recentComments' },
+              recentSharesCount: { $size: '$recentShares' },
+              risingScore: {
+                $add: [
+                  { $multiply: [{ $size: '$recentFollows' }, weights.follower] },
+                  { $multiply: [{ $size: '$recentLikes' }, weights.like] },
+                  { $multiply: [{ $size: '$recentComments' }, weights.comment] },
+                  { $multiply: [{ $size: '$recentShares' }, weights.share] }
+                ]
+              }
+            }
+          });
+          
+          // Sort by risingScore (descending), then by total followers as tiebreaker
+          sortStage = { risingScore: -1, followerCount: -1 };
+          break;
         default:
           // Default: balanced ranking
           sortStage = { followerCount: -1, songCount: -1 };
       }
       pipeline.push({ $sort: sortStage });
 
-      // Project stage - select fields to return
-      pipeline.push({
-        $project: {
-          password: 0,
-          refreshToken: 0,
-          followers: 0,
-          songs: 0,
-        },
-      });
+      // Project stage - select fields to return (exclude sensitive data and temporary arrays)
+      const projectStage: any = {
+        password: 0,
+        refreshToken: 0,
+        followers: 0,
+        songs: 0,
+      };
+      
+      // For risingScore, also exclude the temporary engagement arrays
+      if (sortBy === 'risingScore') {
+        projectStage.recentFollows = 0;
+        projectStage.recentLikes = 0;
+        projectStage.recentComments = 0;
+        projectStage.recentShares = 0;
+      }
+      
+      pipeline.push({ $project: projectStage });
 
       // Execute pipeline with pagination
       const [artists, totalCount] = await Promise.all([
@@ -171,7 +301,8 @@ export class UserController {
         User.aggregate([...pipeline, { $count: 'count' }]).then((r: any) => r[0]?.count || 0),
       ]);
 
-      res.json({
+      // Build response with metadata
+      const response: any = {
         success: true,
         data: {
           artists,
@@ -182,7 +313,19 @@ export class UserController {
             hasMore: skip + artists.length < totalCount,
           },
         },
-      });
+      };
+
+      // Add Rising Stars metadata if using risingScore sort
+      if (sortBy === 'risingScore') {
+        response.data.risingStarsConfig = {
+          timeWindow: timeWindow || '30d',
+          formula: formula || 'balanced',
+          availableTimeWindows: getAvailableTimeWindows(),
+          availableFormulas: getAvailableFormulas(),
+        };
+      }
+
+      res.json(response);
     } catch (error) {
       console.error('Discover artists error:', error);
       res.status(500).json({ success: false, message: 'Server error' });
