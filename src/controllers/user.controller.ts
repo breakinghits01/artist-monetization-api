@@ -7,29 +7,36 @@ import mongoose from 'mongoose';
 import { getTimeWindow, getFormulaWeights, getAvailableTimeWindows, getAvailableFormulas } from '../config/rising-stars.config';
 
 export class UserController {
-  // Get user profile
+  // Get user profile - supports both MongoDB ObjectID and username
   async getProfile(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
 
-      // Validate userId
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-        res.status(400).json({ success: false, message: 'Invalid user ID' });
-        return;
+      let user;
+
+      // Try to find by MongoDB ObjectID first (backward compatibility)
+      if (mongoose.Types.ObjectId.isValid(userId) && userId.length === 24) {
+        user = await User.findById(userId).select('-password -refreshToken');
       }
 
-      const user = await User.findById(userId).select('-password -refreshToken');
+      // If not found by ID or not a valid ObjectID, try username lookup
+      if (!user) {
+        // Case-insensitive username lookup for better UX
+        user = await User.findOne({ 
+          username: new RegExp(`^${userId}$`, 'i') 
+        }).select('-password -refreshToken');
+      }
 
       if (!user) {
         res.status(404).json({ success: false, message: 'User not found' });
         return;
       }
 
-      // Get follow stats
+      // Get follow stats using the resolved user._id
       const [followerCount, followingCount, songCount] = await Promise.all([
-        Follow.countDocuments({ followingId: userId }),
-        Follow.countDocuments({ followerId: userId }),
-        Song.countDocuments({ artistId: userId }),
+        Follow.countDocuments({ followingId: user._id }),
+        Follow.countDocuments({ followerId: user._id }),
+        Song.countDocuments({ artistId: user._id }),
       ]);
 
       res.json({
@@ -73,8 +80,8 @@ export class UserController {
         role: 'artist', // Only show users with artist role
       };
       
-      // Exclude current user from discover results
-      if (currentUserId) {
+      // Exclude current user from discover results (except for risingScore rankings)
+      if (currentUserId && sortBy !== 'risingScore') {
         matchStage._id = { $ne: currentUserId };
       }
       

@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import Song from '../models/Song.model';
 import PlaySession from '../models/PlaySession.model';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -137,7 +138,7 @@ export const getSongById = async (req: AuthRequest, res: Response): Promise<void
 };
 
 /**
- * Get artist's songs
+ * Get artist's songs - supports both MongoDB ObjectID and username
  * PUBLIC ENDPOINT
  */
 export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -149,14 +150,37 @@ export const getArtistSongs = async (req: AuthRequest, res: Response): Promise<v
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
+    let resolvedArtistId: any;
+
+    // Try to find artist by MongoDB ObjectID first (backward compatibility)
+    if (mongoose.Types.ObjectId.isValid(artistId) && artistId.length === 24) {
+      resolvedArtistId = artistId;
+    } else {
+      // Try username lookup
+      const User = (await import('../models/User.model')).default;
+      const user = await User.findOne({ 
+        username: new RegExp(`^${artistId}$`, 'i') 
+      }).select('_id');
+      
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: 'Artist not found',
+        });
+        return;
+      }
+      
+      resolvedArtistId = user._id;
+    }
+
     const [songs, total] = await Promise.all([
-      Song.find({ artistId })
+      Song.find({ artistId: resolvedArtistId })
         .populate('artistId', 'username email avatarUrl')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      Song.countDocuments({ artistId }),
+      Song.countDocuments({ artistId: resolvedArtistId }),
     ]);
 
     const totalPages = Math.ceil(total / limitNum);
