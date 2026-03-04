@@ -114,7 +114,8 @@ export const getSongById = async (req: AuthRequest, res: Response): Promise<void
     const { songId } = req.params;
 
     const song = await Song.findById(songId)
-      .populate('artistId', 'username email avatarUrl');
+      .populate('artistId', 'username email avatarUrl')
+      .lean();
 
     if (!song) {
       res.status(404).json({

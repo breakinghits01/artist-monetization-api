@@ -60,6 +60,20 @@ CommentSchema.index({ userId: 1, createdAt: -1 }); // User's comments
 CommentSchema.index({ parentCommentId: 1 }); // Thread replies
 CommentSchema.index({ songId: 1, deletedAt: 1 }); // Active comments per song
 
+// Update Song commentCount when comment is created
+CommentSchema.post('save', async function() {
+  const Song = (await import('./Song.model')).default;
+  await Song.findByIdAndUpdate(this.songId, { $inc: { commentCount: 1 } });
+});
+
+// Update Song commentCount when comment is deleted (soft delete via deletedAt)
+CommentSchema.post('findOneAndUpdate', async function(doc) {
+  if (doc && doc.deletedAt) {
+    const Song = (await import('./Song.model')).default;
+    await Song.findByIdAndUpdate(doc.songId, { $inc: { commentCount: -1 } });
+  }
+});
+
 // Virtual for reply count
 CommentSchema.virtual('replyCount', {
   ref: 'Comment',
