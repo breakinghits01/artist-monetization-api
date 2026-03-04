@@ -44,6 +44,9 @@ import { initializeWebSocket } from './services/socket.service';
 const app: Application = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Enable trust proxy for Cloudflare/reverse proxy setup
+app.set('trust proxy', true);
+
 // Connect to MongoDB
 connectDB();
 
