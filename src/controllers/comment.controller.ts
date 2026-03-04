@@ -69,31 +69,23 @@ export const getComments = async (req: Request, res: Response, next: NextFunctio
     const { songId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    const skip = (page - 1) * limit;
 
     if (!mongoose.Types.ObjectId.isValid(songId)) {
       res.status(400).json({ message: 'Invalid song ID' });
     }
 
-    // Get only top-level comments (no parent)
-    const [comments, total] = await Promise.all([
-      Comment.find({ songId, parentCommentId: null, deletedAt: null })
+    // Get ALL comments (both top-level and replies) - frontend will organize them
+    const [allComments, topLevelCount] = await Promise.all([
+      Comment.find({ songId, deletedAt: null })
         .populate('userId', 'username profilePicture')
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
         .lean(),
       Comment.countDocuments({ songId, parentCommentId: null, deletedAt: null }),
     ]);
 
-    // Get reply counts for each comment
-    const commentsWithReplies = await Promise.all(
-      comments.map(async (comment) => {
-        const replyCount = await Comment.countDocuments({
-          parentCommentId: comment._id,
-          deletedAt: null,
-        });
-
+    // Add like status for each comment
+    const commentsWithLikes = await Promise.all(
+      allComments.map(async (comment) => {
         // Check if current user liked this comment
         let userHasLiked = false;
         if (req.user?.id) {
@@ -106,19 +98,18 @@ export const getComments = async (req: Request, res: Response, next: NextFunctio
 
         return {
           ...comment,
-          replyCount,
           userHasLiked,
         };
       })
     );
 
     res.json({
-      comments: commentsWithReplies,
+      comments: commentsWithLikes,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit),
+        total: topLevelCount,
+        pages: Math.ceil(topLevelCount / limit),
       },
     });
   } catch (error) {
