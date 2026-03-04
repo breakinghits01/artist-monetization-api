@@ -74,13 +74,42 @@ app.use(cors({
   exposedHeaders: ['Content-Length', 'Content-Type'],
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-  message: 'Too many requests from this IP, please try again later.'
+// Rate limiting - More generous limits for production stability
+// Separate rate limiters for different endpoints
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Increased from 100 to 500 for better UX
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/health';
+  },
+  handler: (_req, res) => {
+    logger.warn('Rate limit exceeded');
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many requests, please slow down and try again later.'
+    });
+  }
 });
-app.use('/api', limiter);
+
+// Stricter rate limit for auth endpoints to prevent brute force
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Only 10 attempts per 15 minutes
+  skipSuccessfulRequests: true, // Don't count successful requests
+  handler: (_req, res) => {
+    logger.warn('Auth rate limit exceeded');
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many authentication attempts, please try again later.'
+    });
+  }
+});
+
+app.use('/api', apiLimiter);
+app.use('/api/*/auth', authLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -99,14 +128,46 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Health check endpoint (keep before static files for API access)
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'Server is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
-  });
+// Health check endpoint with detailed monitoring
+app.get('/health', async (_req, res) => {
+  try {
+    // Check MongoDB connection
+    const mongoose = require('mongoose');
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    
+    // Get memory usage
+    const memUsage = process.memoryUsage();
+    const memoryMB = {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+    };
+
+    // Get uptime
+    const uptime = process.uptime();
+    const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      uptime: uptimeStr,
+      database: dbStatus,
+      memory: memoryMB,
+      nodejs: process.version,
+      pid: process.pid
+    };
+
+    res.status(200).json(health);
+  } catch (error) {
+    logger.error('Health check failed:', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: 'Service temporarily unavailable'
+    });
+  }
 });
 
 // API Routes (all under /api prefix)
@@ -191,21 +252,89 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   logger.info(`🌐 WebSocket server running on port ${PORT}`);
 });
 
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  httpServer.close(async () => {
+    logger.info('HTTP server closed');
+    
+    try {
+      // Close database connections
+      const mongoose = require('mongoose');
+      await mongoose.connection.close();
+      logger.info('Database connections closed');
+      
+      // Close WebSocket connections
+      if (io) {
+        io.close();
+        logger.info('WebSocket connections closed');
+      }
+      
+      logger.info('✅ Graceful shutdown completed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during shutdown:', error);
+      process.exit(1);
+    }
+  });
+  
+  // Force shutdown after 30 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+};
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err: Error) => {
-  logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
-  logger.error(err.name, err.message);
-  httpServer.close(() => {
-    process.exit(1);
-  });
+  logger.error('UNHANDLED REJECTION! 💥');
+  logger.error('Error name:', err.name);
+  logger.error('Error message:', err.message);
+  logger.error('Error stack:', err.stack);
+  
+  // In production, log but don't crash immediately
+  if (process.env.NODE_ENV === 'production') {
+    logger.warn('Continuing operation in production mode');
+  } else {
+    gracefulShutdown('UNHANDLED REJECTION');
+  }
 });
 
-// Handle SIGTERM
-process.on('SIGTERM', () => {
-  logger.info('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  httpServer.close(() => {
-    logger.info('💥 Process terminated!');
-  });
+// Handle uncaught exceptions
+process.on('uncaughtException', (err: Error) => {
+  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  logger.error('Error name:', err.name);
+  logger.error('Error message:', err.message);
+  logger.error('Error stack:', err.stack);
+  gracefulShutdown('UNCAUGHT EXCEPTION');
 });
+
+// Handle SIGTERM (e.g., from PM2 restart)
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Handle SIGINT (e.g., Ctrl+C)
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Memory monitoring and cleanup
+if (process.env.NODE_ENV === 'production') {
+  setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+    
+    // Warn if memory usage is high (>80% of heap)
+    if (heapUsedMB / heapTotalMB > 0.8) {
+      logger.warn(`High memory usage: ${heapUsedMB}MB / ${heapTotalMB}MB`);
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        logger.info('Forced garbage collection');
+      }
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+}
 
 export default app;

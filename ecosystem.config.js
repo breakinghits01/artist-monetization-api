@@ -8,14 +8,23 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: ['src'],
-      ignore_watch: ['node_modules', 'logs', 'uploads'],
+      ignore_watch: ['node_modules', 'logs', 'uploads', 'temp', 'web-build'],
       max_memory_restart: '1G',
+      min_uptime: '10s', // Consider app crashed if it runs less than 10s
+      max_restarts: 10, // Max 10 restarts within 1 minute
+      restart_delay: 5000, // Wait 5s before restarting
+      kill_timeout: 5000, // Wait 5s for graceful shutdown before forcing
+      listen_timeout: 10000, // Wait 10s for app to be ready
+      shutdown_with_message: true, // Enable graceful shutdown
       env: {
         NODE_ENV: 'development',
+        NODE_OPTIONS: '--max-old-space-size=1024', // Limit memory to 1GB
       },
       error_file: './logs/pm2-dev-error.log',
       out_file: './logs/pm2-dev-out.log',
       log_file: './logs/pm2-dev-combined.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
       time: true,
     },
     {
@@ -26,9 +35,15 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
+      min_uptime: '10s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 5000,
       error_file: './logs/pm2-flutter-error.log',
       out_file: './logs/pm2-flutter-out.log',
       log_file: './logs/pm2-flutter-combined.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
       time: true,
     },
     {
@@ -39,12 +54,18 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '500M',
+      min_uptime: '10s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 5000,
       env: {
         NODE_ENV: 'development',
       },
       error_file: './logs/pm2-cloudflare-error.log',
       out_file: './logs/pm2-cloudflare-out.log',
       log_file: './logs/pm2-cloudflare-combined.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
       time: true,
     },
   ],
