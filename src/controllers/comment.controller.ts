@@ -83,7 +83,16 @@ export const getComments = async (req: Request, res: Response, next: NextFunctio
       Comment.countDocuments({ songId, parentCommentId: null, deletedAt: null }),
     ]);
 
-    // Add like status for each comment
+    // Calculate reply counts for each comment
+    const replyCountMap = new Map<string, number>();
+    allComments.forEach((comment) => {
+      if (comment.parentCommentId) {
+        const parentId = comment.parentCommentId.toString();
+        replyCountMap.set(parentId, (replyCountMap.get(parentId) || 0) + 1);
+      }
+    });
+
+    // Add like status and reply count for each comment
     const commentsWithLikes = await Promise.all(
       allComments.map(async (comment) => {
         // Check if current user liked this comment
@@ -96,9 +105,15 @@ export const getComments = async (req: Request, res: Response, next: NextFunctio
           userHasLiked = !!liked;
         }
 
+        // Add reply count for parent comments
+        const replyCount = comment.parentCommentId === null 
+          ? (replyCountMap.get(comment._id.toString()) || 0)
+          : 0;
+
         return {
           ...comment,
           userHasLiked,
+          replyCount,
         };
       })
     );
