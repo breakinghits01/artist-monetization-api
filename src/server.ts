@@ -36,6 +36,7 @@ import adminRoutes from './routes/admin.routes';
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { trackUserActivity, updateAllUsersOnlineStatus } from './middleware/activity.middleware';
 
 // Import config
 import { connectDB } from './config/database';
@@ -173,6 +174,10 @@ app.get('/health', async (_req, res) => {
 
 // API Routes (all under /api prefix)
 const API_VERSION = process.env.API_VERSION || 'v1';
+
+// Activity tracking middleware - applies to all authenticated routes
+app.use(`/api/${API_VERSION}`, trackUserActivity);
+
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/users`, userRoutes);
 app.use(`/api/${API_VERSION}/songs`, songRoutes);
@@ -252,6 +257,13 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   logger.info(`📱 Mobile access at http://192.168.100.32:${PORT}/api/${API_VERSION}`);
   logger.info(`🏥 Health check at http://localhost:${PORT}/health`);
   logger.info(`🌐 WebSocket server running on port ${PORT}`);
+  
+  // Start online status update job (runs every 1 minute)
+  setInterval(async () => {
+    await updateAllUsersOnlineStatus();
+  }, 60 * 1000); // 60 seconds
+  
+  logger.info('⏱️  Online status update job started (runs every 1 minute)');
 });
 
 // Graceful shutdown handler

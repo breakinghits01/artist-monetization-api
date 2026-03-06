@@ -430,10 +430,11 @@ export const removeSong = async (req: Request, res: Response): Promise<void> => 
  */
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { status = 'all', page = 1, limit = 20 } = req.query;
+    const { status = 'all', role, page = 1, limit = 20 } = req.query;
 
     const query: any = {};
 
+    // Status filter
     if (status === 'active') {
       query.moderationStatus = 'active';
     } else if (status === 'warning') {
@@ -443,9 +444,14 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
     } else if (status === 'banned') {
       query.isBanned = true;
     }
+    
+    // Role filter
+    if (role && role !== 'all') {
+      query.role = role;
+    }
 
     const users = await User.find(query)
-      .select('username email role avatar createdAt lastLogin moderationStatus isBanned flagCount')
+      .select('username email role avatar createdAt lastLogin lastActiveAt isOnline deviceType moderationStatus isBanned flagCount')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));

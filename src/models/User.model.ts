@@ -21,8 +21,14 @@ export interface IUser extends Document {
   
   // Security
   lastLogin?: Date;
+  lastActiveAt?: Date;
   loginAttempts: number;
   lockUntil?: Date;
+  
+  // Activity tracking
+  sessionId?: string;
+  deviceType?: 'mobile' | 'web';
+  isOnline: boolean;
   
   // Refresh token
   refreshToken?: string;
@@ -98,11 +104,32 @@ const UserSchema = new Schema<IUser>(
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     lastLogin: Date,
+    lastActiveAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
     loginAttempts: {
       type: Number,
       default: 0,
     },
     lockUntil: Date,
+    
+    // Activity tracking
+    sessionId: {
+      type: String,
+      sparse: true,
+    },
+    deviceType: {
+      type: String,
+      enum: ['mobile', 'web'],
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    
     refreshToken: String,
     refreshTokenExpire: Date,
     
