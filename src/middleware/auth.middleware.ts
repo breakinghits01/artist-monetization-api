@@ -61,6 +61,35 @@ export const protect = async (
 
     // Attach user to request
     req.user = user;
+    
+    // Track user activity (fire-and-forget for performance)
+    setImmediate(async () => {
+      try {
+        const userAgent = req.headers['user-agent']?.toLowerCase() || '';
+        const deviceType = userAgent.includes('mobile') || 
+                          userAgent.includes('android') || 
+                          userAgent.includes('iphone') 
+                          ? 'mobile' 
+                          : 'web';
+        
+        await User.findByIdAndUpdate(
+          user._id,
+          {
+            lastActiveAt: new Date(),
+            isOnline: true,
+            deviceType,
+          },
+          { 
+            new: false,
+            runValidators: false,
+          }
+        );
+      } catch (error) {
+        // Silently log - don't affect user experience
+        console.error('Activity tracking error:', error);
+      }
+    });
+    
     next();
   } catch (error: any) {
     if (error instanceof AppError) {

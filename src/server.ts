@@ -36,7 +36,7 @@ import adminRoutes from './routes/admin.routes';
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
-import { trackUserActivity, updateAllUsersOnlineStatus } from './middleware/activity.middleware';
+import { updateAllUsersOnlineStatus } from './middleware/activity.middleware';
 
 // Import config
 import { connectDB } from './config/database';
@@ -174,9 +174,6 @@ app.get('/health', async (_req, res) => {
 
 // API Routes (all under /api prefix)
 const API_VERSION = process.env.API_VERSION || 'v1';
-
-// Activity tracking middleware - applies to all authenticated routes
-app.use(`/api/${API_VERSION}`, trackUserActivity);
 
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/users`, userRoutes);
