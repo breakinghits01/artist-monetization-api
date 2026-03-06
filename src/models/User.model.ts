@@ -28,6 +28,15 @@ export interface IUser extends Document {
   refreshToken?: string;
   refreshTokenExpire?: Date;
   
+  // Moderation (for CMS)
+  isBanned: boolean;
+  banReason?: string;
+  bannedBy?: mongoose.Types.ObjectId;
+  bannedAt?: Date;
+  moderationStatus: 'active' | 'warning' | 'suspended' | 'banned';
+  moderationNotes?: string;
+  flagCount: number;
+  
   createdAt: Date;
   updatedAt: Date;
   
@@ -96,6 +105,31 @@ const UserSchema = new Schema<IUser>(
     lockUntil: Date,
     refreshToken: String,
     refreshTokenExpire: Date,
+    
+    // Moderation fields
+    isBanned: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    banReason: String,
+    bannedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    bannedAt: Date,
+    moderationStatus: {
+      type: String,
+      enum: ['active', 'warning', 'suspended', 'banned'],
+      default: 'active',
+      index: true,
+    },
+    moderationNotes: String,
+    flagCount: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
   },
   {
     timestamps: true,

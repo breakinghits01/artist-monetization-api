@@ -39,6 +39,14 @@ export interface ISong extends Document {
   engagementScore?: number;
   engagementUpdatedAt?: Date;
   
+  // Moderation (for CMS)
+  moderationStatus: 'approved' | 'pending' | 'flagged' | 'removed';
+  moderationNotes?: string;
+  flagCount: number;
+  flaggedBy?: mongoose.Types.ObjectId[];
+  reviewedBy?: mongoose.Types.ObjectId;
+  reviewedAt?: Date;
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -185,6 +193,29 @@ const SongSchema = new Schema<ISong>(
       type: Date,
       default: null,
     },
+    
+    // Moderation fields
+    moderationStatus: {
+      type: String,
+      enum: ['approved', 'pending', 'flagged', 'removed'],
+      default: 'approved',
+      index: true,
+    },
+    moderationNotes: String,
+    flagCount: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+    flaggedBy: [{
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    reviewedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    reviewedAt: Date,
   },
   {
     timestamps: true,

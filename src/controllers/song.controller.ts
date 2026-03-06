@@ -594,33 +594,13 @@ export const getGenres = async (_req: AuthRequest, res: Response): Promise<void>
  */
 export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // Extract userId from JWT token
-    let userId = req.user?.userId;
-    
-    if (!userId && req.headers.authorization?.startsWith('Bearer')) {
-      try {
-        const token = req.headers.authorization.split(' ')[1];
-        const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
-        userId = decoded.userId;
-        console.log('✅ Extracted userId from token:', userId);
-      } catch (error) {
-        console.error('❌ Failed to decode JWT token:', error);
-      }
-    }
+    // Get userId from protect middleware (already attached)
+    const userId = req.user?.userId || req.user?._id;
     
     if (!userId) {
       res.status(401).json({
         success: false,
         message: 'Authentication required. Please login.',
-      });
-      return;
-    }
-
-    if (!req.file) {
-      res.status(400).json({
-        success: false,
-        message: 'No audio file uploaded',
       });
       return;
     }

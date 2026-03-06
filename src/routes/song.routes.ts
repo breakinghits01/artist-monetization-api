@@ -14,9 +14,9 @@ router.get('/artist/:artistId', songController.getArtistSongs);
 router.post('/:songId/session/start', protect, songController.startPlaySession);
 router.post('/:songId/play', protect, songController.incrementPlayCount);
 
-// Protected routes - Temporarily disabled authentication for testing
-router.post('/upload', upload.single('audio'), songController.uploadAudioFile);
-router.post('/', songController.createSong); // TODO: Re-enable protect middleware
+// Protected routes - Authentication required
+router.post('/upload', protect, upload.single('audio'), songController.uploadAudioFile);
+router.post('/', protect, songController.createSong);
 router.patch('/:songId', protect, songController.updateSong);
 router.delete('/:songId', protect, songController.deleteSong);
 
