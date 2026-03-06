@@ -435,7 +435,9 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
     const query: any = {};
 
     // Status filter
-    if (status === 'active') {
+    if (status === 'online') {
+      query.isOnline = true;
+    } else if (status === 'active') {
       query.moderationStatus = 'active';
     } else if (status === 'warning') {
       query.moderationStatus = 'warning';
