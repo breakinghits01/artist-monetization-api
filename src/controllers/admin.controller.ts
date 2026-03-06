@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User.model';
 import Song from '../models/Song.model';
 import ArtistProfile from '../models/ArtistProfile.model';
@@ -570,6 +571,141 @@ export const getRevenueStats = async (_req: Request, res: Response): Promise<voi
     res.status(500).json({
       success: false,
       message: 'Failed to fetch revenue stats',
+    });
+  }
+};
+
+/**
+ * Get single user details
+ */
+export const getUserDetails = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId)
+      .select('username email role avatar bio tokens createdAt lastLogin moderationStatus isBanned flagCount bannedBy bannedAt banReason');
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+      return;
+    }
+
+    // Get user stats
+    const [songCount, followerCount, totalRevenue] = await Promise.all([
+      Song.countDocuments({ artistId: userId }),
+      mongoose.model('Follow').countDocuments({ following: userId }),
+      Payout.aggregate([
+        { $match: { artistId: new mongoose.Types.ObjectId(userId) } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]).then(result => result[0]?.total || 0),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        user,
+        stats: {
+          songCount,
+          followerCount,
+          totalRevenue,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get user details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user details',
+    });
+  }
+};
+
+/**
+ * Change user role (admin, artist, fan)
+ */
+export const changeUserRole = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+    const { role, reason } = req.body;
+    const adminId = (req as any).user?.userId;
+
+    // Validate role
+    if (!['admin', 'artist', 'fan'].includes(role)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid role. Must be admin, artist, or fan',
+      });
+      return;
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+      return;
+    }
+
+    // Store previous role
+    const previousRole = user.role;
+
+    // Don't allow changing own role
+    if (userId === adminId) {
+      res.status(403).json({
+        success: false,
+        message: 'Cannot change your own role',
+      });
+      return;
+    }
+
+    // Update role
+    user.role = role;
+    await user.save();
+
+    // If changing to artist, create artist profile if not exists
+    if (role === 'artist') {
+      const existingProfile = await ArtistProfile.findOne({ userId });
+      if (!existingProfile) {
+        await ArtistProfile.create({
+          userId,
+          bio: '',
+          genres: [],
+          socialLinks: {},
+          status: 'active',
+          isVerified: false,
+          verificationStatus: 'pending',
+        });
+      }
+    }
+
+    // Log admin action
+    await AdminAction.create({
+      adminId,
+      action: 'user_role_changed',
+      targetType: 'user',
+      targetId: user._id,
+      reason: reason || `Role changed from ${previousRole} to ${role}`,
+      details: {
+        previousRole,
+        newRole: role,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: { user },
+      message: `User role changed to ${role} successfully`,
+    });
+  } catch (error) {
+    console.error('Change user role error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change user role',
     });
   }
 };

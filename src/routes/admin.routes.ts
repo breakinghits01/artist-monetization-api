@@ -24,7 +24,9 @@ router.delete('/admin/songs/:songId', adminController.removeSong);
 
 // Users Management
 router.get('/admin/users', adminController.getUsers);
+router.get('/admin/users/:userId', adminController.getUserDetails);
 router.patch('/admin/users/:userId/status', adminController.updateUserStatus);
+router.patch('/admin/users/:userId/role', adminController.changeUserRole);
 
 // Revenue & Analytics
 router.get('/admin/revenue', adminController.getRevenueStats);
