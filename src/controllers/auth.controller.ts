@@ -465,3 +465,60 @@ export const getMe = async (
     });
   }
 };
+
+/**
+ * @desc    Check username availability
+ * @route   GET /api/v1/auth/check-username/:username
+ * @access  Public
+ */
+export const checkUsernameAvailability = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { username } = req.params;
+
+    // Check if username exists
+    const existingUser = await User.findOne({ username });
+
+    res.status(200).json({
+      success: true,
+      available: !existingUser,
+    });
+  } catch (error) {
+    logger.error('Username availability check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error checking username availability',
+    });
+  }
+};
+
+/**
+ * @desc    Check email availability
+ * @route   GET /api/v1/auth/check-email/:email
+ * @access  Public
+ */
+export const checkEmailAvailability = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email } = req.params;
+    const decodedEmail = decodeURIComponent(email);
+
+    // Check if email exists
+    const existingUser = await User.findOne({ email: decodedEmail });
+
+    res.status(200).json({
+      success: true,
+      available: !existingUser,
+    });
+  } catch (error) {
+    logger.error('Email availability check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error checking email availability',
+    });
+  }
+};

@@ -8,6 +8,8 @@ import {
   resetPassword,
   verifyEmail,
   getMe,
+  checkUsernameAvailability,
+  checkEmailAvailability,
 } from '../controllers/auth.controller';
 import { protect, validate } from '../middleware/auth.middleware';
 import {
@@ -27,6 +29,10 @@ router.post('/refresh', refreshAccessToken);
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
 router.post('/verify-email', validate(verifyEmailSchema), verifyEmail);
+
+// Availability check routes (public)
+router.get('/check-username/:username', checkUsernameAvailability);
+router.get('/check-email/:email', checkEmailAvailability);
 
 // Protected routes
 router.post('/logout', protect, logout);
