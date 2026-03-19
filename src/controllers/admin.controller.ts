@@ -638,7 +638,7 @@ export const changeUserRole = async (req: Request, res: Response): Promise<void>
   try {
     const { userId } = req.params;
     const { role, reason } = req.body;
-    const adminId = (req as any).user?.userId;
+    const adminId = (req as any).userId || (req as any).user?.userId;
 
     // Validate role
     if (!['admin', 'artist', 'fan'].includes(role)) {
@@ -694,7 +694,7 @@ export const changeUserRole = async (req: Request, res: Response): Promise<void>
     // Log admin action
     await AdminAction.create({
       adminId,
-      action: 'user_role_changed',
+      action: 'role_changed',
       targetType: 'user',
       targetId: user._id,
       reason: reason || `Role changed from ${previousRole} to ${role}`,
@@ -714,6 +714,74 @@ export const changeUserRole = async (req: Request, res: Response): Promise<void>
     res.status(500).json({
       success: false,
       message: 'Failed to change user role',
+    });
+  }
+};
+
+/**
+ * Reset user password (Admin only)
+ */
+export const resetUserPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, reason } = req.body;
+    const adminId = (req as any).userId || (req as any).user?.userId;
+
+    // Validation
+    if (!newPassword || newPassword.length < 8) {
+      res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long',
+      });
+      return;
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+      return;
+    }
+
+    // Don't allow resetting admin passwords (extra security)
+    if (user.role === 'admin') {
+      res.status(403).json({
+        success: false,
+        message: 'Cannot reset admin user passwords',
+      });
+      return;
+    }
+
+    // Update password (will be hashed by pre-save hook)
+    user.password = newPassword;
+    await user.save();
+
+    // Log admin action for audit trail
+    await AdminAction.create({
+      adminId,
+      action: 'password_reset',
+      targetType: 'user',
+      targetId: user._id,
+      reason: reason || 'Password reset by administrator',
+      details: {
+        username: user.username,
+        email: user.email,
+        timestamp: new Date(),
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Password reset successfully for user ${user.username || user.email}`,
+    });
+  } catch (error: any) {
+    console.error('Reset user password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset user password',
     });
   }
 };

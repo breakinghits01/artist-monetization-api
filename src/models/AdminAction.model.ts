@@ -4,7 +4,8 @@ export interface IAdminAction extends Document {
   adminId: mongoose.Types.ObjectId;
   action: 'user_banned' | 'user_unbanned' | 'song_removed' | 'song_approved' | 
           'artist_verified' | 'artist_rejected' | 'report_resolved' | 
-          'payout_approved' | 'payout_rejected' | 'content_flagged' | 'other';
+          'payout_approved' | 'payout_rejected' | 'content_flagged' | 
+          'role_changed' | 'password_reset' | 'other';
   
   targetType: 'user' | 'song' | 'artist_profile' | 'report' | 'payout' | 'system';
   targetId?: mongoose.Types.ObjectId;
@@ -45,6 +46,8 @@ const AdminActionSchema = new Schema<IAdminAction>({
       'payout_approved', 
       'payout_rejected', 
       'content_flagged',
+      'role_changed',
+      'password_reset',
       'other'
     ],
     required: true,

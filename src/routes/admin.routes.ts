@@ -27,6 +27,7 @@ router.get('/admin/users', adminController.getUsers);
 router.get('/admin/users/:userId', adminController.getUserDetails);
 router.patch('/admin/users/:userId/status', adminController.updateUserStatus);
 router.patch('/admin/users/:userId/role', adminController.changeUserRole);
+router.patch('/admin/users/:userId/reset-password', adminController.resetUserPassword);
 
 // Revenue & Analytics
 router.get('/admin/revenue', adminController.getRevenueStats);
