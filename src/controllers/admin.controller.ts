@@ -638,7 +638,7 @@ export const changeUserRole = async (req: Request, res: Response): Promise<void>
   try {
     const { userId } = req.params;
     const { role, reason } = req.body;
-    const adminId = (req as any).userId || (req as any).user?.userId;
+    const adminId = (req as any).user?._id || (req as any).user?.userId || (req as any).userId;
 
     // Validate role
     if (!['admin', 'artist', 'fan'].includes(role)) {
@@ -725,7 +725,7 @@ export const resetUserPassword = async (req: Request, res: Response): Promise<vo
   try {
     const { userId } = req.params;
     const { newPassword, reason } = req.body;
-    const adminId = (req as any).userId || (req as any).user?.userId;
+    const adminId = (req as any).user?._id || (req as any).user?.userId || (req as any).userId;
 
     // Validation
     if (!newPassword || newPassword.length < 8) {
