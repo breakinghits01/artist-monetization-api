@@ -22,7 +22,12 @@ export const connectDB = async (): Promise<void> => {
       heartbeatFrequencyMS: 10000, // Check server health every 10 seconds
       retryWrites: true, // Automatically retry failed writes
       retryReads: true, // Automatically retry failed reads
+      maxIdleTimeMS: 60000, // Close idle connections after 60 seconds
+      waitQueueTimeoutMS: 5000, // Timeout when waiting for connection from pool
     });
+    
+    // Set default query timeout (15 seconds)
+    mongoose.set('maxTimeMS', 15000);
 
     logger.info(`🍃 MongoDB Connected: ${conn.connection.host}`);
     logger.info(`📊 Database: ${conn.connection.name}`);

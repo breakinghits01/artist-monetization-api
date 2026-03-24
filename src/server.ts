@@ -84,6 +84,10 @@ const apiLimiter = rateLimit({
   max: 500, // Increased from 100 to 500 for better UX
   standardHeaders: true,
   legacyHeaders: false,
+  validate: {
+    trustProxy: false, // Disable trust proxy validation to prevent crashes
+    xForwardedForHeader: false,
+  },
   skip: (req) => {
     // Skip rate limiting for health checks
     return req.path === '/health';
@@ -102,6 +106,10 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // Only 10 attempts per 15 minutes
   skipSuccessfulRequests: true, // Don't count successful requests
+  validate: {
+    trustProxy: false, // Disable trust proxy validation to prevent crashes
+    xForwardedForHeader: false,
+  },
   handler: (_req, res) => {
     logger.warn('Auth rate limit exceeded');
     res.status(429).json({
@@ -113,6 +121,32 @@ const authLimiter = rateLimit({
 
 app.use('/api', apiLimiter);
 app.use('/api/*/auth', authLimiter);
+
+// Request timeout middleware (30 seconds)
+app.use((req, res, next) => {
+  // Set timeout for all requests
+  req.setTimeout(30000, () => {
+    logger.warn(`Request timeout: ${req.method} ${req.path}`);
+    if (!res.headersSent) {
+      res.status(408).json({
+        success: false,
+        message: 'Request timeout. Please try again.'
+      });
+    }
+  });
+  
+  res.setTimeout(30000, () => {
+    logger.warn(`Response timeout: ${req.method} ${req.path}`);
+    if (!res.headersSent) {
+      res.status(504).json({
+        success: false,
+        message: 'Gateway timeout. Please try again.'
+      });
+    }
+  });
+  
+  next();
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -301,15 +335,33 @@ const gracefulShutdown = async (signal: string) => {
 };
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (err: Error) => {
+process.on('unhandledRejection', (err: Error, promise: Promise<any>) => {
   logger.error('UNHANDLED REJECTION! 💥');
   logger.error('Error name:', err.name);
   logger.error('Error message:', err.message);
   logger.error('Error stack:', err.stack);
+  logger.error('Promise:', promise);
   
-  // In production, log but don't crash immediately
+  // In production, log but don't crash - maintain uptime
   if (process.env.NODE_ENV === 'production') {
-    logger.warn('Continuing operation in production mode');
+    logger.warn('⚠️ Continuing operation in production mode (error logged)');
+    
+    // Track rejection for monitoring
+    if ((global as any).rejectionCount === undefined) {
+      (global as any).rejectionCount = 0;
+    }
+    (global as any).rejectionCount++;
+    
+    // If too many rejections in short time, restart gracefully
+    if ((global as any).rejectionCount > 10) {
+      logger.error('Too many unhandled rejections. Initiating graceful restart...');
+      gracefulShutdown('MULTIPLE UNHANDLED REJECTIONS');
+    }
+    
+    // Reset counter after 5 minutes
+    setTimeout(() => {
+      (global as any).rejectionCount = 0;
+    }, 5 * 60 * 1000);
   } else {
     gracefulShutdown('UNHANDLED REJECTION');
   }

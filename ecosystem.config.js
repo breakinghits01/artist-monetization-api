@@ -7,7 +7,7 @@ module.exports = {
       exec_mode: 'fork',
       instances: 1,
       autorestart: true,
-      watch: ['src'],
+      watch: false, // Disabled to prevent unnecessary restarts
       ignore_watch: ['node_modules', 'logs', 'uploads', 'temp', 'web-build'],
       max_memory_restart: '1G',
       min_uptime: '10s', // Consider app crashed if it runs less than 10s
@@ -16,6 +16,7 @@ module.exports = {
       kill_timeout: 5000, // Wait 5s for graceful shutdown before forcing
       listen_timeout: 10000, // Wait 10s for app to be ready
       shutdown_with_message: true, // Enable graceful shutdown
+      exp_backoff_restart_delay: 100, // Exponential backoff for restarts
       env: {
         NODE_ENV: 'development',
         NODE_OPTIONS: '--max-old-space-size=1024', // Limit memory to 1GB

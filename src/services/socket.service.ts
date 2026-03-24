@@ -67,9 +67,13 @@ export const initializeWebSocket = (server: HTTPServer): SocketIOServer => {
 
     // Handle join event (explicit join)
     socket.on('join', (data: { userId: string }) => {
-      if (data.userId === userId) {
-        socket.join(`user_${data.userId}`);
-        logger.info(`📥 User explicitly joined room: user_${data.userId}`);
+      try {
+        if (data.userId === userId) {
+          socket.join(`user_${data.userId}`);
+          logger.info(`📥 User explicitly joined room: user_${data.userId}`);
+        }
+      } catch (error) {
+        logger.error(`Error joining room for ${userId}:`, error);
       }
     });
 
@@ -79,9 +83,27 @@ export const initializeWebSocket = (server: HTTPServer): SocketIOServer => {
       userSockets.delete(userId);
     });
 
-    // Handle errors
+    // Handle errors with recovery
     socket.on('error', (error: Error) => {
       logger.error(`❌ WebSocket error for ${userId}:`, error);
+      
+      // Attempt to recover by cleaning up and allowing reconnection
+      try {
+        userSockets.delete(userId);
+        socket.disconnect(true);
+      } catch (cleanupError) {
+        logger.error(`Error during socket cleanup for ${userId}:`, cleanupError);
+      }
+    });
+
+    // Handle connection errors
+    socket.on('connect_error', (error: Error) => {
+      logger.error(`❌ WebSocket connection error for ${userId}:`, error);
+    });
+
+    // Handle timeout
+    socket.on('timeout', () => {
+      logger.warn(`⏱️ WebSocket timeout for ${userId}`);
     });
 
     // Send connection success message
@@ -89,6 +111,15 @@ export const initializeWebSocket = (server: HTTPServer): SocketIOServer => {
       message: 'WebSocket connected successfully',
       userId,
       timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Handle server-level errors
+  io.engine.on('connection_error', (err: any) => {
+    logger.error('WebSocket server connection error:', {
+      code: err.code,
+      message: err.message,
+      context: err.context,
     });
   });
 
