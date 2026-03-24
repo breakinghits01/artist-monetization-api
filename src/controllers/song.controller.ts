@@ -312,13 +312,26 @@ export const createSong = async (req: AuthRequest, res: Response): Promise<void>
  */
 export const updateSong = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.user?._id || req.user?.userId;
     const { songId } = req.params;
     const updates = req.body;
+
+    console.log('📝 Update song request:', { userId, songId, updates });
 
     const song = await Song.findOne({ _id: songId, artistId: userId });
 
     if (!song) {
+      console.log('❌ Song not found or permission denied:', { songId, userId });
+      // Check if song exists at all
+      const songExists = await Song.findById(songId);
+      if (songExists) {
+        console.log('⚠️ Song exists but artistId mismatch:', { 
+          requestUserId: userId, 
+          songArtistId: songExists.artistId 
+        });
+      } else {
+        console.log('⚠️ Song does not exist in database');
+      }
       res.status(404).json({
         success: false,
         message: 'Song not found or you do not have permission to update it',
@@ -336,12 +349,15 @@ export const updateSong = async (req: AuthRequest, res: Response): Promise<void>
 
     await song.save();
 
+    console.log('✅ Song updated successfully:', { songId, title: song.title });
+
     res.status(200).json({
       success: true,
       message: 'Song updated successfully',
       data: { song },
     });
   } catch (error: any) {
+    console.error('❌ Update song error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update song',
