@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import SystemSettings from './SystemSettings.model';
 
 export interface ISong extends Document {
   artistId: mongoose.Types.ObjectId;
@@ -235,15 +236,23 @@ SongSchema.index({ shareCount: -1 }); // For most shared
 SongSchema.index({ averageRating: -1, ratingCount: -1 }); // For top rated (with min rating count)
 SongSchema.index({ artistId: 1, engagementScore: -1 }); // For artist's popular songs
 
-// Validate max songs per artist (10 songs limit)
+// Validate max songs per artist (configurable via settings)
 SongSchema.pre('save', async function (next) {
   if (this.isNew) {
-    const count = await mongoose.model('Song').countDocuments({ 
-      artistId: this.artistId 
-    });
+    // Check if song limit enforcement is enabled
+    const enforceLimitEnabled = await SystemSettings.getSetting('enforce_song_limit', true);
     
-    if (count >= parseInt(process.env.MAX_SONGS_PER_ARTIST || '10')) {
-      throw new Error('Artist has reached the maximum limit of 10 songs');
+    if (enforceLimitEnabled) {
+      const count = await mongoose.model('Song').countDocuments({ 
+        artistId: this.artistId 
+      });
+      
+      // Get the dynamic song limit from settings (defaults to 10)
+      const maxSongs = await SystemSettings.getSetting('max_songs_per_artist', 10);
+      
+      if (count >= maxSongs) {
+        throw new Error(`Artist has reached the maximum limit of ${maxSongs} songs. Contact support to increase your limit.`);
+      }
     }
   }
   next();

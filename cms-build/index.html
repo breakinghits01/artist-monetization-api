@@ -40,9 +40,20 @@
   <!-- Version cache busting -->
   <script>
     window.flutterCacheVersion = Date.now();
+    // Force browser to reload assets on every deployment
+    window.addEventListener('DOMContentLoaded', function() {
+      const version = new URLSearchParams(window.location.search).get('v') || Date.now();
+      console.log('App version:', version);
+    });
   </script>
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // Add version parameter to main script
+    const script = document.createElement('script');
+    script.src = 'flutter_bootstrap.js?v=' + Date.now();
+    script.async = true;
+    document.body.appendChild(script);
+  </script>
 </body>
 </html>

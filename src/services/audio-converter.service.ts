@@ -1,5 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import * as ffmpegStatic from 'ffmpeg-static';
+// @ts-ignore - Type declaration exists in src/types but ts-node watch mode doesn't pick it up
+import * as ffprobeStatic from 'ffprobe-static';
 import * as path from 'path';
 import * as fs from 'fs';
 import { promisify } from 'util';
@@ -22,6 +24,22 @@ if (ffmpegPath && typeof ffmpegPath === 'string') {
   console.log('✅ FFmpeg path configured:', ffmpegPath);
 } else {
   console.warn('⚠️ FFmpeg path not found, using system FFmpeg');
+}
+
+// Set FFprobe path to bundled binary
+let ffprobePath: string | null = null;
+if (typeof ffprobeStatic === 'string') {
+  ffprobePath = ffprobeStatic;
+} else if (ffprobeStatic && typeof ffprobeStatic === 'object') {
+  // Handle case where ffprobe-static returns an object
+  ffprobePath = (ffprobeStatic as any).path || (ffprobeStatic as any).default || null;
+}
+
+if (ffprobePath && typeof ffprobePath === 'string') {
+  ffmpeg.setFfprobePath(ffprobePath);
+  console.log('✅ FFprobe path configured:', ffprobePath);
+} else {
+  console.warn('⚠️ FFprobe path not found, using system FFprobe');
 }
 
 /**
@@ -177,10 +195,49 @@ export class AudioConverterService {
       const metadata = await this.getMetadata(tempPath);
 
       return metadata;
+    } catch (error: any) {
+      console.warn('⚠️ Metadata extraction failed, using estimates:', error.message);
+      
+      // Return estimated metadata based on file size and format
+      // Fallback ensures upload continues even if ffprobe fails
+      const estimatedDuration = this.estimateDuration(buffer.byteLength, format);
+      
+      return {
+        duration: estimatedDuration,
+        bitrate: 320, // Assume high quality
+        format: format || 'mp3',
+        sampleRate: 44100, // CD quality
+        channels: 2, // Stereo
+        size: buffer.byteLength,
+      };
     } finally {
       // Cleanup temp file
       await this.cleanupFile(tempPath);
     }
+  }
+
+  /**
+   * Estimate audio duration from file size
+   * @param fileSize - File size in bytes
+   * @param format - Audio format
+   * @returns Estimated duration in seconds
+   */
+  private static estimateDuration(fileSize: number, format: string): number {
+    // Average bitrates for different formats (kbps)
+    const avgBitrates: { [key: string]: number } = {
+      mp3: 192,
+      m4a: 256,
+      wav: 1411,
+      flac: 800,
+      ogg: 160,
+      aac: 256,
+    };
+
+    const bitrate = avgBitrates[format.toLowerCase()] || 192;
+    const durationSeconds = Math.floor((fileSize * 8) / (bitrate * 1000));
+    
+    // Ensure reasonable duration (30 seconds to 10 minutes)
+    return Math.max(30, Math.min(durationSeconds, 600));
   }
 
   /**

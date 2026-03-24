@@ -88,11 +88,11 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Generate token
+    // Generate token (90 days - admin CMS should work like Spotify, no interruptions)
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
+      { expiresIn: '90d' }
     );
 
     res.json({
