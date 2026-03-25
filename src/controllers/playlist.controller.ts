@@ -11,6 +11,11 @@ export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise
   try {
     const userId = req.user?.userId || req.params.userId;
     const { page = 1, limit = 20 } = req.query;
+    
+    console.log('🔍 [PLAYLIST DEBUG] getUserPlaylists called');
+    console.log('🔍 [PLAYLIST DEBUG] req.user:', req.user);
+    console.log('🔍 [PLAYLIST DEBUG] req.params:', req.params);
+    console.log('🔍 [PLAYLIST DEBUG] Using userId:', userId);
 
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
@@ -24,6 +29,11 @@ export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise
         .lean(),
       Playlist.countDocuments({ userId }),
     ]);
+    
+    console.log('🔍 [PLAYLIST DEBUG] Found', playlists.length, 'playlists for userId:', userId);
+    if (playlists.length > 0) {
+      console.log('🔍 [PLAYLIST DEBUG] First playlist:', playlists[0].name, 'userId:', playlists[0].userId);
+    }
 
     // Fix songCount for each playlist by checking actual valid songs
     const playlistsWithValidCounts = await Promise.all(
@@ -144,11 +154,21 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
 
 /**
  * Create new playlist
- * PROTECTED
+ * PROTECTED - Requires authentication
  */
 export const createPlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || '6982bda1b7a73570da690db9'; // Fallback for testing
+    // Get userId from authenticated user (set by protect middleware)
+    const userId = req.user?._id || req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required to create playlist',
+      });
+      return;
+    }
+
     const { name, description, coverImage, isPublic } = req.body;
 
     if (!name) {
@@ -158,6 +178,8 @@ export const createPlaylist = async (req: AuthRequest, res: Response): Promise<v
       });
       return;
     }
+
+    console.log('✅ [PLAYLIST] Creating playlist for userId:', userId, '- User:', req.user?.username);
 
     const playlist = await Playlist.create({
       userId,
@@ -175,6 +197,7 @@ export const createPlaylist = async (req: AuthRequest, res: Response): Promise<v
       data: { playlist },
     });
   } catch (error: any) {
+    console.error('❌ [PLAYLIST] Failed to create playlist:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to create playlist',
@@ -189,7 +212,16 @@ export const createPlaylist = async (req: AuthRequest, res: Response): Promise<v
  */
 export const updatePlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || '6982bda1b7a73570da690db9';
+    const userId = req.user?._id || req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required to update playlist',
+      });
+      return;
+    }
+    
     const { playlistId } = req.params;
     const updates = req.body;
 
@@ -233,7 +265,16 @@ export const updatePlaylist = async (req: AuthRequest, res: Response): Promise<v
  */
 export const deletePlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || '6982bda1b7a73570da690db9';
+    const userId = req.user?._id || req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required to delete playlist',
+      });
+      return;
+    }
+    
     const { playlistId } = req.params;
 
     const playlist = await Playlist.findOneAndDelete({ _id: playlistId, userId });
@@ -261,11 +302,20 @@ export const deletePlaylist = async (req: AuthRequest, res: Response): Promise<v
 
 /**
  * Add song to playlist
- * PROTECTED
+ * PROTECTED - Owner only
  */
 export const addSongToPlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || '6982bda1b7a73570da690db9';
+    const userId = req.user?._id || req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required to add songs to playlist',
+      });
+      return;
+    }
+    
     const { playlistId, songId } = req.params;
 
     // Verify song exists
@@ -317,11 +367,20 @@ export const addSongToPlaylist = async (req: AuthRequest, res: Response): Promis
 
 /**
  * Remove song from playlist
- * PROTECTED
+ * PROTECTED - Owner only
  */
 export const removeSongFromPlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || '6982bda1b7a73570da690db9';
+    const userId = req.user?._id || req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required to remove songs from playlist',
+      });
+      return;
+    }
+    
     const { playlistId, songId } = req.params;
 
     const playlist = await Playlist.findOne({ _id: playlistId, userId });
