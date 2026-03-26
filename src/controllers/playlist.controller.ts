@@ -9,13 +9,17 @@ import { AuthRequest } from '../middleware/auth.middleware';
  */
 export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.userId || req.params.userId;
+    const userIdString = req.user?.userId || req.params.userId;
     const { page = 1, limit = 20 } = req.query;
     
     console.log('🔍 [PLAYLIST DEBUG] getUserPlaylists called');
     console.log('🔍 [PLAYLIST DEBUG] req.user:', req.user);
     console.log('🔍 [PLAYLIST DEBUG] req.params:', req.params);
-    console.log('🔍 [PLAYLIST DEBUG] Using userId:', userId);
+    console.log('🔍 [PLAYLIST DEBUG] Using userId string:', userIdString);
+    console.log('🔍 [PLAYLIST DEBUG] userId type:', typeof userIdString);
+    
+    // Query with string userId (database has string format, not ObjectId)
+    const userId = userIdString;
 
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
