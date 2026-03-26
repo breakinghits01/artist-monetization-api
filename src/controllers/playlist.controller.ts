@@ -163,15 +163,18 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
 export const createPlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // Get userId from authenticated user (set by protect middleware)
-    const userId = req.user?._id || req.user?.id;
+    const userIdRaw = req.user?._id || req.user?.id;
 
-    if (!userId) {
+    if (!userIdRaw) {
       res.status(401).json({
         success: false,
         message: 'Authentication required to create playlist',
       });
       return;
     }
+
+    // Convert to string to match database format (existing playlists use string)
+    const userId = userIdRaw.toString();
 
     const { name, description, coverImage, isPublic } = req.body;
 

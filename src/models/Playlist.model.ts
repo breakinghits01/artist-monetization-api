@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPlaylist extends Document {
-  userId: string;  // Changed from ObjectId to string
+  userId: string;
   name: string;
   description?: string;
   coverImage?: string;
@@ -15,7 +15,7 @@ export interface IPlaylist extends Document {
 const PlaylistSchema = new Schema<IPlaylist>(
   {
     userId: {
-      type: String,  // Changed from ObjectId to String to match database format
+      type: String,
       required: [true, 'User ID is required'],
       index: true,
     },
