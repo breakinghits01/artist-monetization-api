@@ -9,17 +9,8 @@ import { AuthRequest } from '../middleware/auth.middleware';
  */
 export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userIdString = req.user?.userId || req.params.userId;
+    const userId = req.user?.userId || req.params.userId;
     const { page = 1, limit = 20 } = req.query;
-    
-    console.log('🔍 [PLAYLIST DEBUG] getUserPlaylists called');
-    console.log('🔍 [PLAYLIST DEBUG] req.user:', req.user);
-    console.log('🔍 [PLAYLIST DEBUG] req.params:', req.params);
-    console.log('🔍 [PLAYLIST DEBUG] Using userId string:', userIdString);
-    console.log('🔍 [PLAYLIST DEBUG] userId type:', typeof userIdString);
-    
-    // Query with string userId (database has string format, not ObjectId)
-    const userId = userIdString;
 
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
@@ -33,11 +24,6 @@ export const getUserPlaylists = async (req: AuthRequest, res: Response): Promise
         .lean(),
       Playlist.countDocuments({ userId }),
     ]);
-    
-    console.log('🔍 [PLAYLIST DEBUG] Found', playlists.length, 'playlists for userId:', userId);
-    if (playlists.length > 0) {
-      console.log('🔍 [PLAYLIST DEBUG] First playlist:', playlists[0].name, 'userId:', playlists[0].userId);
-    }
 
     // Fix songCount for each playlist by checking actual valid songs
     const playlistsWithValidCounts = await Promise.all(
@@ -163,18 +149,15 @@ export const getPlaylistById = async (req: AuthRequest, res: Response): Promise<
 export const createPlaylist = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // Get userId from authenticated user (set by protect middleware)
-    const userIdRaw = req.user?._id || req.user?.id;
+    const userId = req.user?._id || req.user?.id;
 
-    if (!userIdRaw) {
+    if (!userId) {
       res.status(401).json({
         success: false,
         message: 'Authentication required to create playlist',
       });
       return;
     }
-
-    // Convert to string to match database format (existing playlists use string)
-    const userId = userIdRaw.toString();
 
     const { name, description, coverImage, isPublic } = req.body;
 

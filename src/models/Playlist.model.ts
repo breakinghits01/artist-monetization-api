@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPlaylist extends Document {
-  userId: string;
+  userId: mongoose.Types.ObjectId;
   name: string;
   description?: string;
   coverImage?: string;
@@ -15,7 +15,8 @@ export interface IPlaylist extends Document {
 const PlaylistSchema = new Schema<IPlaylist>(
   {
     userId: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: 'User',
       required: [true, 'User ID is required'],
       index: true,
     },
