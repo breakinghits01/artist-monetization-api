@@ -92,6 +92,13 @@ const defaultSettings = [
     type: 'boolean',
     description: 'Require users to verify email before uploading',
     category: 'security'
+  },
+  {
+    key: 'max_downloads_per_hour',
+    value: 200,
+    type: 'number',
+    description: 'Maximum number of offline song downloads allowed per user per hour (rate limit)',
+    category: 'security'
   }
 ];
 

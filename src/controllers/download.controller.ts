@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { DownloadService } from '../services/download.service';
+import SystemSettings from '../models/SystemSettings.model';
 
 /**
  * Download a song in specified format
@@ -20,8 +21,9 @@ export const downloadSong = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    // Check rate limit
-    const rateLimit = await DownloadService.checkRateLimit(userId, 10);
+    // Check rate limit (configurable via CMS > System Settings > Security > max_downloads_per_hour)
+    const maxDownloadsPerHour = await SystemSettings.getSetting('max_downloads_per_hour', 200);
+    const rateLimit = await DownloadService.checkRateLimit(userId, maxDownloadsPerHour);
     if (!rateLimit.allowed) {
       res.status(429).json({
         success: false,
