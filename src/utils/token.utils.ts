@@ -12,7 +12,9 @@ interface RefreshTokenPayload {
 }
 
 /**
- * Generate JWT access token (short-lived: 15 minutes)
+ * Generate JWT access token.
+ * A random `jti` (JWT ID) is included so that two tokens generated in the
+ * same second for the same user are never byte-for-byte identical.
  */
 export const generateAccessToken = (
   userId: string,
@@ -20,20 +22,22 @@ export const generateAccessToken = (
   role: string
 ): string => {
   const payload: TokenPayload = { userId, email, role };
-  
   return jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: process.env.JWT_EXPIRE || '15m',
+    expiresIn: process.env.JWT_EXPIRE || '90d',
+    jwtid: crypto.randomBytes(16).toString('hex'), // unique per token
   } as jwt.SignOptions);
 };
 
 /**
- * Generate JWT refresh token (long-lived: 7 days)
+ * Generate JWT refresh token.
+ * A random `jti` ensures every rotation issues a truly new token even when
+ * the call happens within the same clock second as the previous one.
  */
 export const generateRefreshToken = (userId: string): string => {
   const payload: RefreshTokenPayload = { userId };
-  
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
+    expiresIn: process.env.JWT_REFRESH_EXPIRE || '30d',
+    jwtid: crypto.randomBytes(16).toString('hex'), // unique per token
   } as jwt.SignOptions);
 };
 

@@ -6,7 +6,6 @@ import ArtistProfile from '../models/ArtistProfile.model';
 import ContentReport from '../models/ContentReport.model';
 import AdminAction from '../models/AdminAction.model';
 import Payout from '../models/Payout.model';
-import jwt from 'jsonwebtoken';
 import {
   generateAccessToken,
   generateRefreshToken,
