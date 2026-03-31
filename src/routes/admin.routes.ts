@@ -6,6 +6,7 @@ const router = express.Router();
 
 // Public routes
 router.post('/auth/admin/login', adminController.adminLogin);
+router.post('/auth/admin/refresh', adminController.adminRefreshToken);
 
 // Protected admin routes
 router.use(adminOnly); // Apply admin middleware to all routes below

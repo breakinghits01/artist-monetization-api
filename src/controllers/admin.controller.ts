@@ -7,6 +7,11 @@ import ContentReport from '../models/ContentReport.model';
 import AdminAction from '../models/AdminAction.model';
 import Payout from '../models/Payout.model';
 import jwt from 'jsonwebtoken';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from '../utils/token.utils';
 
 /**
  * Get recent activity (song uploads, user registrations, etc.)
@@ -88,17 +93,31 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Generate token (90 days - admin CMS should work like Spotify, no interruptions)
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET!,
-      { expiresIn: '90d' }
+    // Generate access token (uses JWT_EXPIRE from env, defaults to 90d)
+    const accessToken = generateAccessToken(
+      (user._id as any).toString(),
+      user.email,
+      user.role,
     );
+
+    // Generate refresh token and persist its hash so we can verify it later
+    const refreshToken = generateRefreshToken((user._id as any).toString());
+    const crypto = await import('crypto');
+    const hashedRefresh = crypto
+      .createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
+    user.refreshToken = hashedRefresh;
+    user.refreshTokenExpire = new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+    );
+    await user.save({ validateBeforeSave: false });
 
     res.json({
       success: true,
       data: {
-        token,
+        token: accessToken,
+        refreshToken,
         admin: {
           id: user._id,
           username: user.username,
@@ -113,6 +132,97 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       success: false,
       message: 'Login failed',
     });
+  }
+};
+
+/**
+ * Refresh admin access token using a valid refresh token.
+ *
+ * Flow:
+ *   1. Client sends { refreshToken } in request body.
+ *   2. We verify the JWT signature and expiry.
+ *   3. We look up the user, confirm they are admin, and that the hashed
+ *      refresh token matches what we stored at login time.
+ *   4. We issue a new access token (and rotate the refresh token so the old
+ *      one is immediately invalidated — prevents replay attacks).
+ *
+ * @route  POST /api/v1/auth/admin/refresh
+ * @access Public (only the refresh token is required)
+ */
+export const adminRefreshToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken } = req.body as { refreshToken?: string };
+
+    if (!refreshToken) {
+      res.status(400).json({ success: false, message: 'Refresh token required.' });
+      return;
+    }
+
+    // Verify JWT signature + expiry
+    let decoded: { userId: string };
+    try {
+      decoded = verifyRefreshToken(refreshToken) as { userId: string };
+    } catch {
+      res.status(401).json({ success: false, message: 'Invalid or expired refresh token.' });
+      return;
+    }
+
+    // Load user with the stored hashed refresh token
+    const user = await User.findById(decoded.userId).select(
+      '+refreshToken +refreshTokenExpire +role',
+    );
+
+    if (!user || user.role !== 'admin') {
+      res.status(401).json({ success: false, message: 'Access denied.' });
+      return;
+    }
+
+    // Compare the provided token against the stored hash
+    const crypto = await import('crypto');
+    const hashedProvided = crypto
+      .createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
+
+    const isValid =
+      user.refreshToken === hashedProvided &&
+      user.refreshTokenExpire != null &&
+      user.refreshTokenExpire > new Date();
+
+    if (!isValid) {
+      // Clear stored token so it can't be retried
+      user.refreshToken = undefined;
+      user.refreshTokenExpire = undefined;
+      await user.save({ validateBeforeSave: false });
+      res.status(401).json({ success: false, message: 'Refresh token revoked or expired.' });
+      return;
+    }
+
+    // Issue new token pair (rotate refresh token for security)
+    const newAccessToken = generateAccessToken(
+      (user._id as any).toString(),
+      user.email,
+      user.role,
+    );
+    const newRefreshToken = generateRefreshToken((user._id as any).toString());
+
+    user.refreshToken = crypto
+      .createHash('sha256')
+      .update(newRefreshToken)
+      .digest('hex');
+    user.refreshTokenExpire = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await user.save({ validateBeforeSave: false });
+
+    res.json({
+      success: true,
+      data: {
+        token: newAccessToken,
+        refreshToken: newRefreshToken,
+      },
+    });
+  } catch (error: any) {
+    console.error('Admin token refresh error:', error);
+    res.status(500).json({ success: false, message: 'Token refresh failed.' });
   }
 };
 
