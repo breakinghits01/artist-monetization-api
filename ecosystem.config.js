@@ -18,7 +18,7 @@ module.exports = {
       shutdown_with_message: true, // Enable graceful shutdown
       exp_backoff_restart_delay: 100, // Exponential backoff for restarts
       env: {
-        NODE_ENV: 'development',
+        NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=1024', // Limit memory to 1GB
       },
       error_file: './logs/pm2-dev-error.log',

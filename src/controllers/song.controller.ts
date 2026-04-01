@@ -608,7 +608,34 @@ export const getGenres = async (_req: AuthRequest, res: Response): Promise<void>
  * Upload audio file + Create song record (Combined endpoint)
  * Accepts file + metadata in ONE request
  */
+/**
+ * Hard timeout wrapper — rejects after `ms` milliseconds.
+ * Prevents any async operation from silently hanging forever.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms / 1000}s`)),
+      ms
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!));
+}
+
 export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<void> => {
+  // Overall 4-minute hard deadline — guarantees a response before Cloudflare (5min) drops the connection
+  const UPLOAD_DEADLINE_MS = 4 * 60 * 1000;
+  const deadline = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('❌ Upload handler deadline exceeded — forcing 504');
+      res.status(504).json({
+        success: false,
+        message: 'Upload timed out. Please try again with a smaller file.',
+      });
+    }
+  }, UPLOAD_DEADLINE_MS);
+
   try {
     // Get userId from protect middleware (already attached)
     const userId = req.user?.userId || req.user?._id;
@@ -671,20 +698,16 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
           const tempId = R2StorageManager.generateTempSongId();
           const timestamp = Date.now();
           
-          // Upload MP3 (streaming version)
-          fileUrl = await R2StorageManager.uploadStreaming(
-            conversionResult.buffer,
-            tempId,
-            timestamp
+          // Upload MP3 (streaming version) — 3min timeout
+          fileUrl = await withTimeout(
+            R2StorageManager.uploadStreaming(conversionResult.buffer, tempId, timestamp),
+            180000, 'R2 streaming upload'
           );
           
-          // Upload original file (for downloads)
-          originalUrl = await R2StorageManager.uploadOriginal(
-            req.file.buffer,
-            tempId,
-            ext,
-            req.file.mimetype,
-            timestamp
+          // Upload original file (for downloads) — 3min timeout
+          originalUrl = await withTimeout(
+            R2StorageManager.uploadOriginal(req.file.buffer, tempId, ext, req.file.mimetype, timestamp),
+            180000, 'R2 original upload'
           );
           
           // Set audio metadata from conversion
@@ -713,11 +736,10 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
           const tempId = R2StorageManager.generateTempSongId();
           const timestamp = Date.now();
           
-          // Upload MP3 (streaming version)
-          fileUrl = await R2StorageManager.uploadStreaming(
-            req.file.buffer,
-            tempId,
-            timestamp
+          // Upload MP3 (streaming version) — 3min timeout
+          fileUrl = await withTimeout(
+            R2StorageManager.uploadStreaming(req.file.buffer, tempId, timestamp),
+            180000, 'R2 streaming upload'
           );
           
           // Get MP3 metadata
@@ -739,14 +761,20 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
       } catch (conversionError: any) {
         console.error('❌ Conversion/upload failed, falling back to legacy upload:', conversionError);
         
-        // Fallback to legacy upload if conversion fails
-        fileUrl = await LegacyUploadService.uploadAudioToR2(req.file);
+        // Fallback to legacy upload if conversion fails — 3min timeout
+        fileUrl = await withTimeout(
+          LegacyUploadService.uploadAudioToR2(req.file),
+          180000, 'R2 legacy fallback upload'
+        );
         console.log('✅ Fallback upload successful:', fileUrl);
       }
     } else {
-      // Feature disabled: Use legacy upload
+      // Feature disabled: Use legacy upload — 3min timeout
       console.log('ℹ️ Auto-conversion disabled, using legacy upload');
-      fileUrl = await LegacyUploadService.uploadAudioToR2(req.file);
+      fileUrl = await withTimeout(
+        LegacyUploadService.uploadAudioToR2(req.file),
+        180000, 'R2 legacy upload'
+      );
     }
     
     console.log('✅ Audio file uploaded to R2:', {
@@ -814,11 +842,15 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
     }
   } catch (error: any) {
     console.error('❌ Error uploading audio file:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to upload audio file',
-      error: error.message,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to upload audio file',
+        error: error.message,
+      });
+    }
+  } finally {
+    clearTimeout(deadline);
   }
 };
 

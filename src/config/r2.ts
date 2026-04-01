@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,6 +13,7 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'artist-monetization-audio'
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
 
 // S3 Client configured for Cloudflare R2
+// NodeHttpHandler adds hard timeouts so a slow/unreachable R2 never hangs the process
 export const r2Client = new S3Client({
   region: 'auto',
   endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -19,6 +21,10 @@ export const r2Client = new S3Client({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 15000,  // 15s to establish TCP connection
+    socketTimeout: 300000,     // 5min for data transfer (large files)
+  }),
 });
 
 /**

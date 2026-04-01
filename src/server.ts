@@ -122,10 +122,13 @@ const authLimiter = rateLimit({
 app.use('/api', apiLimiter);
 app.use('/api/*/auth', authLimiter);
 
-// Request timeout middleware (30 seconds)
+// Request timeout middleware
+// Upload route gets 5 minutes; everything else gets 30 seconds
 app.use((req, res, next) => {
-  // Set timeout for all requests
-  req.setTimeout(30000, () => {
+  const isUpload = req.method === 'POST' && req.path.includes('/songs/upload');
+  const timeoutMs = isUpload ? 5 * 60 * 1000 : 30000;
+
+  req.setTimeout(timeoutMs, () => {
     logger.warn(`Request timeout: ${req.method} ${req.path}`);
     if (!res.headersSent) {
       res.status(408).json({
@@ -135,7 +138,7 @@ app.use((req, res, next) => {
     }
   });
   
-  res.setTimeout(30000, () => {
+  res.setTimeout(timeoutMs, () => {
     logger.warn(`Response timeout: ${req.method} ${req.path}`);
     if (!res.headersSent) {
       res.status(504).json({
