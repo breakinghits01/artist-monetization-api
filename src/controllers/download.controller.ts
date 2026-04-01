@@ -36,8 +36,9 @@ export const downloadSong = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    // Check download permission
-    const permission = await DownloadService.checkDownloadPermission(userId, songId);
+    // Check download permission (pass tier for per-song premiumDownloadOnly check)
+    const userTier = (req.user?.subscription?.tier || 'free') as 'free' | 'premium' | 'advanced';
+    const permission = await DownloadService.checkDownloadPermission(userId, songId, userTier);
     if (!permission.allowed) {
       res.status(403).json({
         success: false,

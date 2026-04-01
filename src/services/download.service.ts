@@ -16,7 +16,8 @@ export class DownloadService {
    */
   static async checkDownloadPermission(
     userId: string,
-    songId: string
+    songId: string,
+    userTier: 'free' | 'premium' | 'advanced' = 'free'
   ): Promise<{ allowed: boolean; reason?: string; song?: any }> {
     try {
       const song = await Song.findById(songId).populate('artistId', 'username');
@@ -55,11 +56,15 @@ export class DownloadService {
         };
       }
 
-      // Check premium-only restriction
+      // Check premium-only restriction (per-song flag set by artist)
       if (song.premiumDownloadOnly) {
-        // TODO: Check if user has premium subscription
-        // For now, allow if they purchased the song
-        return { allowed: true, song };
+        const TIER_RANK: Record<string, number> = { free: 0, premium: 1, advanced: 2 };
+        if ((TIER_RANK[userTier] ?? 0) < 1) {
+          return {
+            allowed: false,
+            reason: 'This song requires a Premium or Advanced subscription to download',
+          };
+        }
       }
 
       return { allowed: true, song };

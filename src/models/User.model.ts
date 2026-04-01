@@ -1,11 +1,39 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export type SubscriptionTier = 'free' | 'premium' | 'advanced';
+export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'trial';
+
+/** Per-user download limits by tier */
+export const TIER_DOWNLOAD_LIMITS: Record<SubscriptionTier, number> = {
+  free: 0,       // no offline downloads
+  premium: 100,  // 100 songs / month
+  advanced: -1,  // -1 = unlimited
+};
+
+/** Numeric rank so middleware can do >= comparisons */
+export const TIER_RANK: Record<SubscriptionTier, number> = {
+  free: 0,
+  premium: 1,
+  advanced: 2,
+};
+
+export interface ISubscription {
+  tier: SubscriptionTier;
+  status: SubscriptionStatus;
+  startDate: Date;
+  endDate?: Date | null;
+  cancelledAt?: Date | null;
+  downloadCount: number;  // resets monthly
+  downloadLimit: number;  // mirrors TIER_DOWNLOAD_LIMITS
+}
+
 export interface IUser extends Document {
   email: string;
   password: string;
   username?: string;
   role: 'artist' | 'fan' | 'admin';
+  subscription: ISubscription;
   tokens: number;
   avatar?: string;
   bio?: string;
@@ -155,6 +183,26 @@ const UserSchema = new Schema<IUser>(
       type: Number,
       default: 0,
       index: true,
+    },
+
+    // Subscription
+    subscription: {
+      tier: {
+        type: String,
+        enum: ['free', 'premium', 'advanced'],
+        default: 'free',
+        index: true,
+      },
+      status: {
+        type: String,
+        enum: ['active', 'cancelled', 'expired', 'trial'],
+        default: 'active',
+      },
+      startDate: { type: Date, default: Date.now },
+      endDate: { type: Date, default: null },
+      cancelledAt: { type: Date, default: null },
+      downloadCount: { type: Number, default: 0 },
+      downloadLimit: { type: Number, default: 0 },
     },
   },
   {

@@ -1,5 +1,6 @@
 import express from 'express';
 import { protect } from '../middleware/auth.middleware';
+import { requireTier } from '../middleware/subscription.middleware';
 import {
   downloadSong,
   getAvailableFormats,
@@ -16,7 +17,7 @@ const router = express.Router();
  */
 
 // Download a song in specified format
-router.get('/song/:songId', protect, downloadSong);
+router.get('/song/:songId', protect, requireTier('premium'), downloadSong);
 
 // Get available download formats for a song
 router.get('/song/:songId/formats', protect, getAvailableFormats);

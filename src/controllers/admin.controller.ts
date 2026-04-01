@@ -562,7 +562,7 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
     }
 
     const users = await User.find(query)
-      .select('username email role avatar createdAt lastLogin lastActiveAt isOnline deviceType moderationStatus isBanned flagCount')
+      .select('-password -refreshToken')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
@@ -700,7 +700,7 @@ export const getUserDetails = async (req: Request, res: Response): Promise<void>
     const { userId } = req.params;
 
     const user = await User.findById(userId)
-      .select('username email role avatar bio tokens createdAt lastLogin moderationStatus isBanned flagCount bannedBy bannedAt banReason');
+      .select('-password -refreshToken');
 
     if (!user) {
       res.status(404).json({
