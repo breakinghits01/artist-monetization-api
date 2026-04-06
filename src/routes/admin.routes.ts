@@ -36,4 +36,8 @@ router.get('/admin/revenue', adminController.getRevenueStats);
 // Recent Activity
 router.get('/admin/activity', adminController.getRecentActivity);
 
+// Conversion Temp-File Management
+router.get('/admin/temp-files', adminController.getTempFiles);
+router.delete('/admin/temp-files', adminController.cleanupTempFiles);
+
 export default router;

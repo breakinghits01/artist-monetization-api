@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
 import User from '../models/User.model';
 import Song from '../models/Song.model';
 import ArtistProfile from '../models/ArtistProfile.model';
@@ -894,3 +896,133 @@ export const resetUserPassword = async (req: Request, res: Response): Promise<vo
     });
   }
 };
+
+// ─── Conversion temp-file helpers ─────────────────────────────────────────────
+
+const TEMP_DIR = path.join(process.cwd(), 'temp');
+
+/** Patterns written by AudioConverterService — anything else is left untouched. */
+const TEMP_FILE_PREFIXES = ['input-', 'output-', 'meta-'];
+
+function isTempAudioFile(name: string): boolean {
+  return TEMP_FILE_PREFIXES.some((p) => name.startsWith(p));
+}
+
+/**
+ * GET /admin/temp-files
+ * List orphaned mid-conversion temp files with size and age info.
+ */
+export const getTempFiles = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    if (!fs.existsSync(TEMP_DIR)) {
+      res.json({
+        success: true,
+        data: { files: [], totalSize: 0, totalSizeFormatted: '0 B', tempDir: TEMP_DIR },
+      });
+      return;
+    }
+
+    const entries = fs.readdirSync(TEMP_DIR);
+    const now = Date.now();
+
+    const files = entries
+      .filter(isTempAudioFile)
+      .map((name) => {
+        const filePath = path.join(TEMP_DIR, name);
+        const stat = fs.statSync(filePath);
+        const ageMs = now - stat.mtimeMs;
+        const ageMins = Math.floor(ageMs / 60_000);
+
+        return {
+          name,
+          size: stat.size,
+          sizeFormatted: formatBytes(stat.size),
+          ageMs,
+          ageFormatted: ageMins < 60
+            ? `${ageMins}m ago`
+            : `${Math.floor(ageMins / 60)}h ${ageMins % 60}m ago`,
+          modifiedAt: stat.mtime.toISOString(),
+          /** Files older than 10 minutes are almost certainly orphaned */
+          isOrphaned: ageMs > 10 * 60_000,
+        };
+      })
+      .sort((a, b) => b.ageMs - a.ageMs); // oldest first
+
+    const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+
+    res.json({
+      success: true,
+      data: {
+        files,
+        totalSize,
+        totalSizeFormatted: formatBytes(totalSize),
+        tempDir: TEMP_DIR,
+      },
+    });
+  } catch (error: any) {
+    console.error('getTempFiles error:', error);
+    res.status(500).json({ success: false, message: 'Failed to list temp files', error: error.message });
+  }
+};
+
+/**
+ * DELETE /admin/temp-files
+ * Delete all (or only orphaned) AudioConverterService temp files.
+ * Query param: ?orphanedOnly=true  → only delete files older than 10 minutes
+ */
+export const cleanupTempFiles = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const orphanedOnly = req.query.orphanedOnly === 'true';
+
+    if (!fs.existsSync(TEMP_DIR)) {
+      res.json({ success: true, data: { deleted: 0, freedBytes: 0, freedFormatted: '0 B' } });
+      return;
+    }
+
+    const entries = fs.readdirSync(TEMP_DIR).filter(isTempAudioFile);
+    const now = Date.now();
+
+    let deleted = 0;
+    let freedBytes = 0;
+    const errors: string[] = [];
+
+    for (const name of entries) {
+      const filePath = path.join(TEMP_DIR, name);
+      try {
+        const stat = fs.statSync(filePath);
+        const isOld = (now - stat.mtimeMs) > 10 * 60_000;
+
+        if (orphanedOnly && !isOld) continue;
+
+        freedBytes += stat.size;
+        fs.unlinkSync(filePath);
+        deleted++;
+        console.log(`🧹 [admin] Deleted temp file: ${name}`);
+      } catch (e: any) {
+        errors.push(`${name}: ${e.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        deleted,
+        freedBytes,
+        freedFormatted: formatBytes(freedBytes),
+        errors: errors.length ? errors : undefined,
+      },
+      message: `Deleted ${deleted} file${deleted !== 1 ? 's' : ''}, freed ${formatBytes(freedBytes)}`,
+    });
+  } catch (error: any) {
+    console.error('cleanupTempFiles error:', error);
+    res.status(500).json({ success: false, message: 'Failed to cleanup temp files', error: error.message });
+  }
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
