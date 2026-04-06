@@ -686,10 +686,12 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
         if (needsConversion) {
           console.log('🔄 Converting to MP3 320kbps...');
           
-          // Convert to MP3
-          const conversionResult = await AudioConverterService.convertBufferToMp3(
-            req.file.buffer,
-            ext
+          // Convert to MP3 — 3-min outer cap (service has its own 5-min internal kill)
+          // On timeout the outer catch falls back to legacy upload automatically
+          const conversionResult = await withTimeout(
+            AudioConverterService.convertBufferToMp3(req.file.buffer, ext),
+            180000,
+            'audio conversion',
           );
           
           console.log(`✅ Conversion complete: ${(conversionResult.buffer.byteLength / 1024 / 1024).toFixed(2)}MB MP3`);
@@ -715,11 +717,12 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
           audioBitrate = conversionResult.bitrate || 320;
           audioFileSize = conversionResult.buffer.byteLength;
           
-          // Get original file metadata
+          // Get original file metadata — 30s cap, non-fatal
           try {
-            const originalMetadata = await AudioConverterService.getMetadataFromBuffer(
-              req.file.buffer,
-              ext
+            const originalMetadata = await withTimeout(
+              AudioConverterService.getMetadataFromBuffer(req.file.buffer, ext),
+              30000,
+              'ffprobe original metadata',
             );
             originalBitrate = originalMetadata.bitrate;
           } catch (metaError) {
@@ -742,11 +745,12 @@ export const uploadAudioFile = async (req: AuthRequest, res: Response): Promise<
             180000, 'R2 streaming upload'
           );
           
-          // Get MP3 metadata
+          // Get MP3 metadata — 30s cap, non-fatal
           try {
-            const metadata = await AudioConverterService.getMetadataFromBuffer(
-              req.file.buffer,
-              'mp3'
+            const metadata = await withTimeout(
+              AudioConverterService.getMetadataFromBuffer(req.file.buffer, 'mp3'),
+              30000,
+              'ffprobe mp3 metadata',
             );
             audioBitrate = metadata.bitrate;
           } catch (metaError) {

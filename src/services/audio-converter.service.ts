@@ -1,7 +1,4 @@
 import ffmpeg from 'fluent-ffmpeg';
-import * as ffmpegStatic from 'ffmpeg-static';
-// @ts-ignore - Type declaration exists in src/types but ts-node watch mode doesn't pick it up
-import * as ffprobeStatic from 'ffprobe-static';
 import * as path from 'path';
 import * as fs from 'fs';
 import { promisify } from 'util';
@@ -9,37 +6,40 @@ import { promisify } from 'util';
 const unlink = promisify(fs.unlink);
 const exists = promisify(fs.exists);
 
-// Set FFmpeg path to bundled binary
-// Handle both string and object returns from ffmpeg-static
-let ffmpegPath: string | null = null;
-if (typeof ffmpegStatic === 'string') {
-  ffmpegPath = ffmpegStatic;
-} else if (ffmpegStatic && typeof ffmpegStatic === 'object') {
-  // Handle case where ffmpeg-static returns an object
-  ffmpegPath = (ffmpegStatic as any).path || (ffmpegStatic as any).default || null;
-}
+// ─── FFmpeg / FFprobe binary resolution ──────────────────────────────────────
+// Both packages ship CommonJS modules. require() always returns the true default
+// export — a path string for ffmpeg-static and { path, version } for
+// ffprobe-static — avoiding the ES-namespace vs CJS-default ambiguity that made
+// the old typeof / duck-typing guards brittle and error-prone.
+const ffmpegBin: string | null = (() => {
+  try {
+    return require('ffmpeg-static') as string;
+  } catch {
+    return null;
+  }
+})();
 
-if (ffmpegPath && typeof ffmpegPath === 'string') {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-  console.log('✅ FFmpeg path configured:', ffmpegPath);
+const ffprobeBin: string | null = (() => {
+  try {
+    const probe = require('ffprobe-static') as { path: string } | string;
+    return typeof probe === 'string' ? probe : (probe.path ?? null);
+  } catch {
+    return null;
+  }
+})();
+
+if (ffmpegBin) {
+  ffmpeg.setFfmpegPath(ffmpegBin);
+  console.log('✅ FFmpeg binary:', ffmpegBin);
 } else {
-  console.warn('⚠️ FFmpeg path not found, using system FFmpeg');
+  console.warn('⚠️ ffmpeg-static not found — falling back to system ffmpeg');
 }
 
-// Set FFprobe path to bundled binary
-let ffprobePath: string | null = null;
-if (typeof ffprobeStatic === 'string') {
-  ffprobePath = ffprobeStatic;
-} else if (ffprobeStatic && typeof ffprobeStatic === 'object') {
-  // Handle case where ffprobe-static returns an object
-  ffprobePath = (ffprobeStatic as any).path || (ffprobeStatic as any).default || null;
-}
-
-if (ffprobePath && typeof ffprobePath === 'string') {
-  ffmpeg.setFfprobePath(ffprobePath);
-  console.log('✅ FFprobe path configured:', ffprobePath);
+if (ffprobeBin) {
+  ffmpeg.setFfprobePath(ffprobeBin);
+  console.log('✅ FFprobe binary:', ffprobeBin);
 } else {
-  console.warn('⚠️ FFprobe path not found, using system FFprobe');
+  console.warn('⚠️ ffprobe-static not found — falling back to system ffprobe');
 }
 
 /**
@@ -77,7 +77,20 @@ export class AudioConverterService {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
+    // Hard cap on conversion — kills the ffmpeg process if it stalls
+    const CONVERSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
     return new Promise((resolve, reject) => {
+      // settled flag prevents double-resolve/reject races between the timeout
+      // and the ffmpeg 'end'/'error' events
+      let settled = false;
+      const settle = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(killTimer);
+        fn();
+      };
+
       const command = ffmpeg(inputPath)
         .audioBitrate(options?.bitrate || this.DEFAULT_BITRATE)
         .audioFrequency(options?.sampleRate || this.DEFAULT_SAMPLE_RATE)
@@ -86,28 +99,37 @@ export class AudioConverterService {
         .audioCodec('libmp3lame')
         .output(finalOutputPath);
 
+      // Kill ffmpeg and reject if the process stalls past the timeout
+      const killTimer = setTimeout(() => {
+        try { command.kill('SIGKILL'); } catch { /* process already exited */ }
+        settle(() =>
+          reject(new Error(`FFmpeg conversion timed out after ${CONVERSION_TIMEOUT_MS / 60000} minutes`)),
+        );
+      }, CONVERSION_TIMEOUT_MS);
+
+      // Surface ffmpeg stderr lines in PM2 logs for observability
+      command.on('stderr', (line: string) => {
+        console.log(`[ffmpeg] ${line}`);
+      });
+
       // Track progress if callback provided
       if (options?.onProgress) {
         command.on('progress', (progress: any) => {
-          // FFmpeg returns time-based progress, convert to percentage
           const percent = progress.percent || 0;
           options.onProgress!(Math.min(Math.max(percent, 0), 100));
         });
       }
 
-      // Handle completion
       command.on('end', () => {
         console.log(`✅ Conversion complete: ${finalOutputPath}`);
-        resolve(finalOutputPath);
+        settle(() => resolve(finalOutputPath));
       });
 
-      // Handle errors
       command.on('error', (err: any) => {
         console.error(`❌ Conversion error: ${err.message}`);
-        reject(new Error(`Audio conversion failed: ${err.message}`));
+        settle(() => reject(new Error(`Audio conversion failed: ${err.message}`)));
       });
 
-      // Start conversion
       command.run();
     });
   }
@@ -253,41 +275,58 @@ export class AudioConverterService {
     channels: number;
     size: number;
   }> {
+    // 30-second hard cap on ffprobe — hangs here are rare but catastrophic
+    const FFPROBE_TIMEOUT_MS = 30_000;
+
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(probeTimer);
+        fn();
+      };
+
+      const probeTimer = setTimeout(() => {
+        settle(() =>
+          reject(new Error(`FFprobe timed out after ${FFPROBE_TIMEOUT_MS / 1000}s on: ${path.basename(filePath)}`)),
+        );
+      }, FFPROBE_TIMEOUT_MS);
+
       try {
         ffmpeg.ffprobe(filePath, (err, metadata) => {
           if (err) {
             console.error('❌ FFprobe error:', err.message);
-            reject(new Error(`Failed to read metadata: ${err.message}`));
+            settle(() => reject(new Error(`Failed to read metadata: ${err.message}`)));
             return;
           }
 
-          if (!metadata || !metadata.streams) {
-            reject(new Error('Invalid metadata structure'));
+          if (!metadata?.streams) {
+            settle(() => reject(new Error('Invalid metadata structure')));
             return;
           }
 
           const audioStream = metadata.streams.find(
-            (stream) => stream.codec_type === 'audio'
+            (stream) => stream.codec_type === 'audio',
           );
 
           if (!audioStream) {
-            reject(new Error('No audio stream found in file'));
+            settle(() => reject(new Error('No audio stream found in file')));
             return;
           }
 
-          resolve({
+          settle(() => resolve({
             duration: Math.floor(metadata.format.duration || 0),
             bitrate: Math.floor((metadata.format.bit_rate || 0) / 1000),
             format: metadata.format.format_name || 'unknown',
             sampleRate: audioStream.sample_rate || 44100,
             channels: audioStream.channels || 2,
             size: metadata.format.size || 0,
-          });
+          }));
         });
       } catch (error: any) {
         console.error('❌ FFprobe initialization error:', error);
-        reject(new Error(`FFmpeg error: ${error.message}`));
+        settle(() => reject(new Error(`FFmpeg error: ${error.message}`)));
       }
     });
   }
