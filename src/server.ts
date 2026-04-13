@@ -91,7 +91,12 @@ const apiLimiter = rateLimit({
   },
   skip: (req) => {
     // Skip rate limiting for health checks
-    return req.path === '/health';
+    if (req.path === '/health') return true;
+    // Skip download routes — they have their own per-user limiter in download.routes.ts.
+    // Counting downloads here (IP-based) would unfairly block offline sync for users
+    // behind shared IPs (mobile carrier NAT, shared WiFi, etc.).
+    if (req.path.includes('/download/')) return true;
+    return false;
   },
   handler: (_req, res) => {
     logger.warn('Rate limit exceeded');

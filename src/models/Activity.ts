@@ -52,7 +52,6 @@ const activitySchema = new Schema<IActivity>(
     createdAt: {
       type: Date,
       default: Date.now,
-      index: true,
     },
   },
   {

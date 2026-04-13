@@ -36,7 +36,6 @@ const CommentSchema = new Schema<IComment>(
       type: Schema.Types.ObjectId,
       ref: 'Comment',
       default: null,
-      index: true,
     },
     likes: {
       type: Number,

@@ -18,7 +18,6 @@ const CommentLikeSchema = new Schema<ICommentLike>(
       type: Schema.Types.ObjectId,
       ref: 'Comment',
       required: [true, 'Comment ID is required'],
-      index: true,
     },
   },
   {
