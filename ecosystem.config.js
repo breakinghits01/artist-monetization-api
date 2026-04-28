@@ -9,17 +9,24 @@ module.exports = {
       autorestart: true,
       watch: false, // Disabled to prevent unnecessary restarts
       ignore_watch: ['node_modules', 'logs', 'uploads', 'temp', 'web-build'],
-      max_memory_restart: '1G',
+      max_memory_restart: '2G',
+      // Restart every day at 2:00 AM PH time (UTC+8 = 18:00 UTC).
+      // Clears accumulated heap growth before it becomes a problem.
+      // PM2 sends SIGTERM → gracefulShutdown() runs → server comes back up.
+      cron_restart: '0 18 * * *',
       min_uptime: '10s', // Consider app crashed if it runs less than 10s
       max_restarts: 10, // Max 10 restarts within 1 minute
       restart_delay: 5000, // Wait 5s before restarting
-      kill_timeout: 5000, // Wait 5s for graceful shutdown before forcing
+      // Must be >= gracefulShutdown forced-exit timeout in server.ts (30s).
+      // Gives the HTTP server time to drain in-flight requests before PM2
+      // force-kills the process with SIGKILL.
+      kill_timeout: 30000,
       listen_timeout: 10000, // Wait 10s for app to be ready
       shutdown_with_message: true, // Enable graceful shutdown
       exp_backoff_restart_delay: 100, // Exponential backoff for restarts
       env: {
         NODE_ENV: 'production',
-        NODE_OPTIONS: '--max-old-space-size=1024', // Limit memory to 1GB
+        NODE_OPTIONS: '--max-old-space-size=2048', // Limit memory to 2GB
       },
       error_file: './logs/pm2-dev-error.log',
       out_file: './logs/pm2-dev-out.log',
