@@ -394,16 +394,27 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Memory monitoring and cleanup
 if (process.env.NODE_ENV === 'production') {
+  // Hard limit set via --max-old-space-size in ecosystem.config.js (2048MB).
+  // We warn at 70% (~1433MB) and critical at 85% (~1740MB) of that limit
+  // so alerts are meaningful and there's headroom before an OOM crash.
+  const MAX_HEAP_MB = 2048;
+  const WARN_THRESHOLD = 0.70;
+  const CRITICAL_THRESHOLD = 0.85;
+
   setInterval(() => {
     const memUsage = process.memoryUsage();
     const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-    const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-    
-    // Warn if memory usage is high (>80% of heap)
-    if (heapUsedMB / heapTotalMB > 0.8) {
-      logger.warn(`High memory usage: ${heapUsedMB}MB / ${heapTotalMB}MB`);
-      
-      // Force garbage collection if available
+    const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+    const ratio = heapUsedMB / MAX_HEAP_MB;
+
+    if (ratio > CRITICAL_THRESHOLD) {
+      logger.error(`CRITICAL memory usage: ${heapUsedMB}MB / ${MAX_HEAP_MB}MB (RSS: ${rssMB}MB) — approaching OOM`);
+      if (global.gc) {
+        global.gc();
+        logger.info('Forced garbage collection');
+      }
+    } else if (ratio > WARN_THRESHOLD) {
+      logger.warn(`High memory usage: ${heapUsedMB}MB / ${MAX_HEAP_MB}MB (RSS: ${rssMB}MB)`);
       if (global.gc) {
         global.gc();
         logger.info('Forced garbage collection');
